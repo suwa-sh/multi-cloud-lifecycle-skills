@@ -1,0 +1,28 @@
+# Canonical Model Template
+# Copy and fill in for each scope (foundation, shared_platform, product)
+
+schema_version: "1.0"
+artifact_type: "canonical_model"
+skill_type: ""           # foundation | shared_platform | product
+artifact_id: ""          # e.g. foundation-canonical-core
+title: ""
+status: "draft"          # draft | review | approved
+generated_at: ""         # ISO 8601
+source_refs: []          # list of source document references
+decision_refs: []        # list of decision record references
+inputs_ref: []           # list of input artifact references
+
+# Canonical elements - define capabilities in vendor-neutral terms
+elements:
+  - id: ""               # unique identifier (snake_case)
+    name: ""             # human-readable name
+    category: ""         # logical grouping
+    description: ""      # what this capability provides
+    requirements:
+      - id: ""
+        description: ""
+        priority: ""     # must | should | may
+        rationale: ""
+    constraints: []      # restrictions or boundaries
+    dependencies: []     # references to other canonical elements
+    source_refs: []      # traceability to vendor sources

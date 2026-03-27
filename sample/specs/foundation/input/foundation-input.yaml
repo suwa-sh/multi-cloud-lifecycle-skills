@@ -1,0 +1,85 @@
+schema_version: "1.0"
+artifact_type: "context"
+skill_type: "foundation"
+artifact_id: "foundation-input"
+title: "基盤設計 入力要件"
+status: "approved"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs: []
+decision_refs: []
+inputs_ref: []
+
+# 対象クラウド
+target_clouds:
+  - vendor: "aws"
+    scope: "full_stack"
+    description: "AWS をフルスタックで利用する主要クラウド"
+  - vendor: "azure"
+    scope: "idp_only"
+    description: "Azure は Entra ID による IdP 利用のみ。ワークロード配置は行わない"
+  - vendor: "gcp"
+    scope: "bigquery_only"
+    description: "GCP は BigQuery によるデータ分析専用。他のワークロードは配置しない"
+    identity: "Entra ID → Cloud Identity フェデレーション"
+    project_structure: "環境別 3 プロジェクト（production / staging / development）"
+    data_sources: "AWS バッチ連携（S3, RDS 等）+ 外部 SaaS 直接連携（GA4, Salesforce 等）"
+
+# 組織構造
+organization:
+  business_units:
+    - id: "ccoe"
+      name: "CCoE"
+      description: "Cloud Center of Excellence — 基盤管理・ガバナンス"
+    - id: "marketing"
+      name: "マーケティング"
+      description: "マーケティング部門"
+    - id: "sales"
+      name: "営業"
+      description: "営業部門"
+    - id: "development"
+      name: "開発"
+      description: "開発部門"
+    - id: "customer-success"
+      name: "カスタマーサクセス"
+      description: "カスタマーサクセス部門"
+    - id: "accounting"
+      name: "経理"
+      description: "経理部門"
+    - id: "general-affairs"
+      name: "総務"
+      description: "総務部門"
+    - id: "executive"
+      name: "経営"
+      description: "経営層"
+  bu_count: 8
+
+# 環境構成
+environments:
+  - id: "production"
+    name: "本番"
+    description: "プロダクション環境"
+  - id: "staging"
+    name: "ステージング"
+    description: "リリース前検証環境"
+  - id: "development"
+    name: "開発"
+    description: "開発・テスト環境"
+
+# セキュリティ・コンプライアンス
+compliance:
+  frameworks:
+    - id: "soc2"
+      name: "SOC2"
+      description: "SOC2 Type II 準拠"
+
+# 監査ログ
+audit:
+  log_retention_days: 365
+  retention_description: "1 年（SOC2 標準）"
+
+# 予算管理
+billing:
+  responsibility_boundary: "bu"
+  responsibility_description: "BU 単位で予算責任を持つ"
+  cost_allocation_model: "hybrid"
+  cost_allocation_description: "固定＋変動ハイブリッド — 基盤固定費は均等割、変動費は利用量比例"

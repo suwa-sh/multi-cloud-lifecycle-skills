@@ -1,0 +1,30 @@
+# Conformance Report Template
+
+schema_version: "1.0"
+artifact_type: "conformance_report"
+skill_type: ""           # foundation | shared_platform | product
+artifact_id: ""          # e.g. foundation-conformance-aws
+title: ""
+status: "draft"
+generated_at: ""
+source_refs: []
+inputs_ref: []
+
+vendor: ""               # aws | azure | gcp
+canonical_ref: ""
+implementation_ref: ""
+
+summary:
+  total_requirements: 0
+  conformant: 0
+  partial: 0
+  non_conformant: 0
+  deferred: 0
+
+results:
+  - canonical_element_id: ""
+    requirement_id: ""
+    status: ""           # conformant | partial | non_conformant | deferred
+    evidence: ""
+    notes: ""
+    deviation_ref: ""    # if non_conformant and deviation is approved

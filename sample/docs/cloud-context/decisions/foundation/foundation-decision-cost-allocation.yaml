@@ -1,0 +1,82 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "foundation"
+artifact_id: "foundation-decision-cost-allocation"
+title: "共有インフラコスト按分ルールの選定"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "AWS Cost Management ベストプラクティス"
+inputs_ref:
+  - "foundation-input"
+
+decision:
+  context: |
+    8 BU が共有する基盤インフラ（ネットワーク、ID 基盤、ログ基盤、セキュリティサービス等）の
+    コストをどの BU にどう配分するかを決定する必要がある。
+    按分ルールは billing_boundary の canonical model、タグ/ラベル設計、
+    AWS Cost Categories の設定に直接影響する。
+  conflict_type: "capability"
+  options:
+    - id: "even_split"
+      description: "均等割 — コスト ÷ BU 数"
+      pros:
+        - "シンプルで運用コストが低い"
+        - "計測基盤が不要"
+        - "導入初期に適する"
+      cons:
+        - "利用量に差がある場合に不公平"
+        - "コスト意識が育ちにくい"
+    - id: "usage_based"
+      description: "利用量比例 — リソース消費量に応じて配分"
+      pros:
+        - "最も公平な按分"
+        - "コスト意識が向上する"
+        - "FinOps のベストプラクティスに沿う"
+      cons:
+        - "計測基盤の構築・運用が必要"
+        - "メトリクス定義の合意に時間がかかる"
+    - id: "hybrid"
+      description: "固定＋変動ハイブリッド — 基盤固定費は均等割、変動費は利用量比例"
+      pros:
+        - "固定費と変動費の性質に合った按分"
+        - "最も一般的な実運用パターン"
+        - "段階的に利用量比例の比率を増やせる"
+      cons:
+        - "固定/変動の分類基準の定義が必要"
+        - "運用がやや複雑"
+  chosen_option: "hybrid"
+  rationale: |
+    8 BU と規模が大きく、均等割では不公平感が生じやすい。
+    一方で初期段階から完全な利用量比例を実装するのは計測基盤の準備コストが高い。
+    ハイブリッドモデルにより、基盤固定費（Transit Gateway, CloudTrail, Security Hub 等）は
+    8 BU 均等割とし、変動費（コンピュート、ストレージ、データ転送）は利用量比例とする。
+    AWS Cost Categories で固定/変動の分類を定義し、自動按分を実現する。
+  risk_assessment: |
+    リスク: 固定/変動の分類基準について BU 間で合意が得られない可能性
+    緩和策: 初期は CCoE が分類基準を決定し、四半期レビューで見直す
+    発生確率: 中
+    影響度: 低（分類基準の変更は Cost Categories の更新で対応可能）
+  affected_elements:
+    - "foundation.billing_boundary"
+  review_date: "2026-09-28"
+
+implementation_notes:
+  aws:
+    service: "AWS Cost Categories"
+    description: "コスト配分ルールを Cost Categories で定義し、自動按分を実現する"
+    tag_requirements:
+      - "cost-center タグの必須化（SCP で強制）"
+      - "shared-service タグによる共有リソース識別"
+    fixed_cost_services:
+      - "AWS Transit Gateway"
+      - "AWS CloudTrail（組織トレイル）"
+      - "AWS Security Hub"
+      - "AWS GuardDuty"
+      - "AWS Config"
+      - "NAT Gateway（共有）"
+    variable_cost_categories:
+      - "EC2 / ECS / Lambda（コンピュート）"
+      - "S3 / EBS（ストレージ）"
+      - "データ転送"
+      - "RDS / DynamoDB（データベース）"

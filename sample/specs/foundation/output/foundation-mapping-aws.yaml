@@ -1,0 +1,215 @@
+schema_version: "1.0"
+artifact_type: "vendor_mapping"
+skill_type: "foundation"
+artifact_id: "foundation-mapping-aws"
+title: "基盤レイヤー AWS ベンダーマッピング"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "AWS Organizations ベストプラクティス"
+  - "AWS Control Tower ガイダンス"
+  - "AWS Security Reference Architecture"
+decision_refs:
+  - "foundation-decision-cost-allocation"
+inputs_ref:
+  - "foundation-canonical"
+
+vendor: "aws"
+canonical_ref: "foundation-canonical"
+
+mappings:
+  # ====================================================================
+  # 1. organization_boundary
+  # ====================================================================
+  - canonical_element_id: "foundation.organization_boundary"
+    vendor_service: "AWS Organizations"
+    vendor_feature: "Organizations, OUs, Accounts, Root Access Management"
+    fidelity: "exact"
+    configuration_notes: |
+      - Root Access Management: 有効化し、メンバーアカウントのルート認証情報を削除
+      - 管理アカウント: CCoE が保有（ワークロード配置なし）、グループメールアドレスと専用電話番号を設定
+      - OU 構成:
+        - Root
+          - Security OU: ログアカウント、セキュリティアカウント
+          - Infrastructure OU: ネットワークアカウント、共有サービスアカウント
+          - Workloads OU:
+            - BU ごとの子 OU（ccoe, marketing, sales, development, customer-success, accounting, general-affairs, executive）
+            - 各 BU OU 配下に production / staging / development アカウント
+          - Sandbox OU: 検証用アカウント
+      - アカウント命名規則: {bu}-{env}（例: development-production）
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "AWS Organizations ベストプラクティス"
+
+  # ====================================================================
+  # 2. billing_boundary
+  # ====================================================================
+  - canonical_element_id: "foundation.billing_boundary"
+    vendor_service: "AWS Cost Management"
+    vendor_feature: "Consolidated Billing, Cost Categories, Cost Allocation Tags, Budgets, Cost Anomaly Detection"
+    fidelity: "exact"
+    configuration_notes: |
+      - Cost Allocation Tags:
+        - cost-center（必須）: BU 識別
+        - environment（必須）: 環境識別
+        - owner（必須）: 管理者識別
+        - shared-service（任意）: 共有リソース識別
+      - Cost Categories:
+        - 固定費カテゴリ: ネットワーク基盤、ID 基盤、ログ基盤 → 8 BU 均等割
+        - 変動費カテゴリ: コンピュート、ストレージ、データ転送 → 利用量比例
+      - AWS Budgets: BU × 環境ごとに月次予算アラート設定
+      - SCP でタグ必須を強制（タグなしリソース作成を拒否）
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "AWS Cost Management ベストプラクティス"
+
+  # ====================================================================
+  # 3. identity_boundary
+  # ====================================================================
+  - canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "AWS IAM Identity Center"
+    vendor_feature: "IAM Identity Center, SAML Federation, SCIM Provisioning"
+    fidelity: "exact"
+    configuration_notes: |
+      - インスタンスタイプ: Organization Instance（推奨。Account Instance は使用しない）
+      - 外部 IdP: Azure Entra ID（SAML 2.0 フェデレーション）
+      - SCIM 自動プロビジョニング: Entra ID → IAM Identity Center
+      - Permission Sets:
+        - AdministratorAccess: CCoE のみ（JIT via Entra PIM）
+        - PowerUserAccess: 開発者（開発・ステージング環境）
+        - ReadOnlyAccess: 全 BU（本番環境デフォルト）
+        - BillingAccess: 経理
+      - ブレークグラス: 管理アカウントに IAM ユーザー × 2（MFA 必須、物理トークン推奨）
+      - ローカル IAM ユーザー作成禁止（SCP で強制）
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "AWS IAM Identity Center ガイド"
+
+  # ====================================================================
+  # 4. policy_enforcement
+  # ====================================================================
+  - canonical_element_id: "foundation.policy_enforcement"
+    vendor_service: "AWS Control Tower, AWS Organizations SCP, AWS Config"
+    vendor_feature: "Control Tower Controls, Service Control Policies, Config Rules, Config Conformance Packs"
+    fidelity: "exact"
+    configuration_notes: |
+      - SCP（予防的コントロール）:
+        - リージョン制限: ap-northeast-1, us-east-1 のみ許可
+        - root ユーザー操作の制限
+        - CloudTrail 無効化の禁止
+        - S3 パブリックアクセスブロック解除の禁止
+        - タグなしリソース作成の拒否（cost-center, environment, owner）
+      - Config Rules（検出的コントロール）:
+        - required-tags: タグ必須チェック
+        - encrypted-volumes: EBS 暗号化チェック
+        - s3-bucket-server-side-encryption-enabled: S3 暗号化チェック
+        - rds-storage-encrypted: RDS 暗号化チェック
+        - iam-user-no-policies-check: IAM ユーザー直接ポリシー禁止
+        - cloudtrail-enabled: CloudTrail 有効化チェック
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "AWS SCP ベストプラクティス"
+      - "AWS Config マネージドルール"
+
+  # ====================================================================
+  # 5. network_segmentation
+  # ====================================================================
+  - canonical_element_id: "foundation.network_segmentation"
+    vendor_service: "AWS VPC, Transit Gateway"
+    vendor_feature: "Transit Gateway, VPC, NAT Gateway, VPC Flow Logs"
+    fidelity: "exact"
+    configuration_notes: |
+      - Transit Gateway:
+        - ap-northeast-1 に 1 つ作成（ネットワークアカウントに配置）
+        - Route Table を環境別に分離（production, non-production, shared-services）
+        - 本番 ↔ 開発/ステージング間の直接ルーティングなし
+      - VPC 設計:
+        - CIDR 体系: 10.{bu_id}.{env_id}.0/20
+        - 共有サービス VPC: 10.0.0.0/16
+        - 各ワークロード VPC: /20（4,096 アドレス）
+      - NAT Gateway: 共有サービス VPC に集約（コスト最適化）
+      - VPC Flow Logs: 全 VPC で有効化、ログアカウントの S3 に集約
+      - DNS: Route 53 Private Hosted Zone を Transit Gateway 経由で共有
+    gap_description: ""
+    alternatives:
+      - "VPC Peering（小規模時の代替。スケーラビリティに課題あり）"
+    source_refs:
+      - "AWS Transit Gateway ベストプラクティス"
+
+  # ====================================================================
+  # 6. audit_aggregation
+  # ====================================================================
+  - canonical_element_id: "foundation.audit_aggregation"
+    vendor_service: "AWS CloudTrail, AWS Config, S3"
+    vendor_feature: "Organization Trail, Config Aggregator, S3 Object Lock"
+    fidelity: "exact"
+    configuration_notes: |
+      - CloudTrail:
+        - 組織トレイル: 全アカウント・全リージョンの API 操作を記録
+        - ログ保存先: ログアカウントの S3 バケット
+        - データイベント: S3, Lambda を対象（コストとのバランスで選択）
+      - S3 バケット設定:
+        - Object Lock: Governance モード（365 日）
+        - ライフサイクルポリシー: 365 日後に S3 Glacier Deep Archive に移行
+        - バージョニング: 有効
+        - パブリックアクセス: 完全ブロック
+      - Config Aggregator: 全アカウントの構成変更をセキュリティアカウントに集約
+      - Entra ID ログ連携: Entra ID 監査ログ → EventBridge → S3（日次バッチ）
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "AWS CloudTrail ベストプラクティス"
+
+  # ====================================================================
+  # 7. security_guardrails
+  # ====================================================================
+  - canonical_element_id: "foundation.security_guardrails"
+    vendor_service: "AWS Security Hub, GuardDuty, KMS"
+    vendor_feature: "Security Hub, GuardDuty, KMS CMK, SNS"
+    fidelity: "exact"
+    configuration_notes: |
+      - Security Hub:
+        - 委任管理者: セキュリティアカウント
+        - 有効な標準: AWS Foundational Security Best Practices v1.0.0
+        - 全アカウント自動有効化
+      - GuardDuty:
+        - 委任管理者: セキュリティアカウント
+        - 全アカウント・ap-northeast-1, us-east-1 で有効化
+        - S3 Protection, EKS Protection（将来用）を有効化
+      - KMS:
+        - BU × 環境ごとに CMK を作成
+        - キーポリシーで BU 間のアクセスを分離
+        - キーローテーション: 自動（年次）
+      - 通知:
+        - Security Hub CRITICAL/HIGH → SNS → Slack/Teams チャネル
+        - GuardDuty HIGH/MEDIUM → SNS → Slack/Teams チャネル
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "AWS Security Hub ベストプラクティス"
+
+  # ====================================================================
+  # 8. exception_handling
+  # ====================================================================
+  - canonical_element_id: "foundation.exception_handling"
+    vendor_service: "AWS 運用プロセス"
+    vendor_feature: "deviation_record ベースの逸脱管理"
+    fidelity: "partial"
+    configuration_notes: |
+      - 逸脱管理は YAML ベースの deviation_record で文書化
+      - SCP の一時的な緩和が必要な場合:
+        1. deviation_record を作成し CCoE が承認
+        2. 対象 OU/アカウントに例外 SCP を一時適用
+        3. 有効期限（最長 90 日）を設定
+        4. 期限到来時に自動通知（EventBridge + Lambda）
+      - Config Rules の抑制:
+        - 承認済み逸脱は Config Rules の Suppression で対応
+    gap_description: "AWS には組み込みの逸脱承認ワークフローがない。プロセスとしての運用が必要"
+    alternatives:
+      - "AWS Service Catalog を使った承認ワークフロー"
+    source_refs:
+      - "AWS Config Suppression ドキュメント"

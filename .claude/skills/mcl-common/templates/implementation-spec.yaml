@@ -1,0 +1,30 @@
+# Implementation Spec Template
+
+schema_version: "1.0"
+artifact_type: "implementation_spec"
+skill_type: ""           # foundation | shared_platform | product
+artifact_id: ""          # e.g. foundation-impl-aws
+title: ""
+status: "draft"
+generated_at: ""
+source_refs: []
+decision_refs: []
+inputs_ref: []
+
+vendor: ""               # aws | azure | gcp
+canonical_ref: ""        # reference to canonical model
+mapping_ref: ""          # reference to vendor mapping
+
+components:
+  - id: ""
+    name: ""
+    canonical_element_id: ""
+    vendor_service: ""
+    configuration:
+      # vendor-specific key-value pairs
+    dependencies: []     # other component ids
+    iac_module: ""       # path to IaC module/template
+    validation_rules:
+      - rule: ""
+        type: ""         # static | runtime
+        description: ""

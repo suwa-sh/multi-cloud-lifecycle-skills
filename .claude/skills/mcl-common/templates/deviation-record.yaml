@@ -1,0 +1,23 @@
+# Deviation Record Template
+
+schema_version: "1.0"
+artifact_type: "deviation_record"
+skill_type: ""           # foundation | shared_platform | product
+artifact_id: ""          # e.g. foundation-deviation-001
+title: ""
+status: "draft"          # draft | accepted | mitigated | closed
+generated_at: ""
+source_refs: []
+decision_refs: []
+inputs_ref: []
+
+deviation:
+  canonical_element_id: ""
+  vendor: ""             # aws | azure | gcp
+  description: ""        # what deviates from the canonical model
+  reason: ""             # why the deviation is necessary
+  risk_level: ""         # low | medium | high | critical
+  risk_description: ""
+  mitigation: ""         # how the risk is reduced
+  approval: ""           # who approved this deviation
+  expiry_date: ""        # when this deviation should be re-evaluated

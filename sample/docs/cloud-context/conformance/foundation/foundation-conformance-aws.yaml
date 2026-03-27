@@ -1,0 +1,321 @@
+schema_version: "1.0"
+artifact_type: "conformance_report"
+skill_type: "foundation"
+artifact_id: "foundation-conformance-aws"
+title: "基盤レイヤー AWS 適合性レポート"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "foundation-canonical"
+  - "foundation-impl-aws"
+inputs_ref:
+  - "foundation-canonical"
+
+vendor: "aws"
+canonical_ref: "foundation-canonical"
+implementation_ref: "foundation-impl-aws"
+
+summary:
+  total_requirements: 33
+  conformant: 31
+  partial: 1
+  non_conformant: 0
+  deferred: 1
+
+results:
+  # ====================================================================
+  # organization_boundary
+  # ====================================================================
+  - canonical_element_id: "foundation.organization_boundary"
+    requirement_id: "foundation.organization_boundary.req-01"
+    status: "conformant"
+    evidence: "管理アカウントはワークロード配置なし。SCP で EC2/RDS 等の作成を制限可能"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.organization_boundary"
+    requirement_id: "foundation.organization_boundary.req-02"
+    status: "conformant"
+    evidence: "BU ごとの子 OU（8 BU）× 環境別アカウント（3 環境）を設計済み"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.organization_boundary"
+    requirement_id: "foundation.organization_boundary.req-03"
+    status: "conformant"
+    evidence: "Security OU（log-archive, security-tooling）、Infrastructure OU（network-hub, shared-services）を設計済み"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.organization_boundary"
+    requirement_id: "foundation.organization_boundary.req-04"
+    status: "conformant"
+    evidence: "Sandbox OU を設計済み"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # billing_boundary
+  # ====================================================================
+  - canonical_element_id: "foundation.billing_boundary"
+    requirement_id: "foundation.billing_boundary.req-01"
+    status: "conformant"
+    evidence: "cost-center タグを SCP で必須化。allowed_values に 8 BU を定義"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.billing_boundary"
+    requirement_id: "foundation.billing_boundary.req-02"
+    status: "conformant"
+    evidence: "AWS Cost Categories で固定費（均等割）/変動費（利用量比例）の分類を定義"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.billing_boundary"
+    requirement_id: "foundation.billing_boundary.req-03"
+    status: "conformant"
+    evidence: "AWS Budgets で BU × 環境ごとに月次予算アラート（80%, 100%, 120%）を設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.billing_boundary"
+    requirement_id: "foundation.billing_boundary.req-04"
+    status: "conformant"
+    evidence: "shared-service タグを定義し、Cost Categories で按分対象を識別"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # identity_boundary
+  # ====================================================================
+  - canonical_element_id: "foundation.identity_boundary"
+    requirement_id: "foundation.identity_boundary.req-01"
+    status: "conformant"
+    evidence: "IAM Identity Center の外部 IdP に Azure Entra ID（SAML 2.0）を設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.identity_boundary"
+    requirement_id: "foundation.identity_boundary.req-02"
+    status: "conformant"
+    evidence: "SCIM プロビジョニングを Entra ID → IAM Identity Center で設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.identity_boundary"
+    requirement_id: "foundation.identity_boundary.req-03"
+    status: "conformant"
+    evidence: "SCP deny-iam-user-creation で IAM ユーザー作成を禁止（管理アカウント除外）"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.identity_boundary"
+    requirement_id: "foundation.identity_boundary.req-04"
+    status: "conformant"
+    evidence: "管理アカウントに IAM ユーザー × 2、ハードウェア MFA トークンを設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.identity_boundary"
+    requirement_id: "foundation.identity_boundary.req-05"
+    status: "conformant"
+    evidence: "Entra ID PIM 経由で JIT アクティベーション（最大 8 時間）を設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.identity_boundary"
+    requirement_id: "foundation.identity_boundary.req-06"
+    status: "conformant"
+    evidence: "Entra ID 条件付きアクセスで全ユーザー MFA 必須を設定"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # policy_enforcement
+  # ====================================================================
+  - canonical_element_id: "foundation.policy_enforcement"
+    requirement_id: "foundation.policy_enforcement.req-01"
+    status: "conformant"
+    evidence: "SCP deny-outside-regions で ap-northeast-1, us-east-1 のみ許可"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.policy_enforcement"
+    requirement_id: "foundation.policy_enforcement.req-02"
+    status: "conformant"
+    evidence: "SCP deny-root-actions で root ユーザー操作を制限"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.policy_enforcement"
+    requirement_id: "foundation.policy_enforcement.req-03"
+    status: "conformant"
+    evidence: "Config Rule required-tags と SCP require-tags で cost-center, environment, owner を必須化"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.policy_enforcement"
+    requirement_id: "foundation.policy_enforcement.req-04"
+    status: "conformant"
+    evidence: "Entra ID 条件付きアクセスで社外ネットワークからのリスクベース認証を設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.policy_enforcement"
+    requirement_id: "foundation.policy_enforcement.req-05"
+    status: "conformant"
+    evidence: "Config Rules: encrypted-volumes, s3-bucket-server-side-encryption-enabled, rds-storage-encrypted"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # network_segmentation
+  # ====================================================================
+  - canonical_element_id: "foundation.network_segmentation"
+    requirement_id: "foundation.network_segmentation.req-01"
+    status: "conformant"
+    evidence: "Transit Gateway を ap-northeast-1 の network-hub アカウントに配置"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.network_segmentation"
+    requirement_id: "foundation.network_segmentation.req-02"
+    status: "conformant"
+    evidence: "TGW ルートテーブルで production / non-production を分離。直接ルーティングなし"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.network_segmentation"
+    requirement_id: "foundation.network_segmentation.req-03"
+    status: "conformant"
+    evidence: "共有 NAT Gateway を network-hub の shared-services VPC に配置"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.network_segmentation"
+    requirement_id: "foundation.network_segmentation.req-04"
+    status: "conformant"
+    evidence: "全 VPC で VPC Flow Logs を有効化、log-archive の S3 に集約"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.network_segmentation"
+    requirement_id: "foundation.network_segmentation.req-05"
+    status: "conformant"
+    evidence: "CIDR 体系 10.{bu_id}.{env_id}0.0/20 で重複を防止"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # audit_aggregation
+  # ====================================================================
+  - canonical_element_id: "foundation.audit_aggregation"
+    requirement_id: "foundation.audit_aggregation.req-01"
+    status: "conformant"
+    evidence: "組織トレイル org-management-trail で全アカウント・全リージョンを記録"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.audit_aggregation"
+    requirement_id: "foundation.audit_aggregation.req-02"
+    status: "conformant"
+    evidence: "log-archive アカウントの S3 バケットに集約"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.audit_aggregation"
+    requirement_id: "foundation.audit_aggregation.req-03"
+    status: "conformant"
+    evidence: "S3 Object Lock Governance モード（365 日）を設定"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.audit_aggregation"
+    requirement_id: "foundation.audit_aggregation.req-04"
+    status: "conformant"
+    evidence: "ライフサイクルポリシー: 365 日後に Glacier Deep Archive に移行"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.audit_aggregation"
+    requirement_id: "foundation.audit_aggregation.req-05"
+    status: "partial"
+    evidence: "Entra ID → Event Hub → EventBridge → S3 の連携を設計済みだが、実装は TODO"
+    notes: "Event Hub と EventBridge Partner Event Source の設定が必要"
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.audit_aggregation"
+    requirement_id: "foundation.audit_aggregation.req-06"
+    status: "conformant"
+    evidence: "Config Aggregator で全アカウントの構成変更を security-tooling に集約"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # security_guardrails
+  # ====================================================================
+  - canonical_element_id: "foundation.security_guardrails"
+    requirement_id: "foundation.security_guardrails.req-01"
+    status: "conformant"
+    evidence: "Security Hub を security-tooling に委任管理。AWS FSBP v1.0.0 を有効化"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.security_guardrails"
+    requirement_id: "foundation.security_guardrails.req-02"
+    status: "conformant"
+    evidence: "GuardDuty を security-tooling に委任管理。ap-northeast-1, us-east-1 で有効化"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.security_guardrails"
+    requirement_id: "foundation.security_guardrails.req-03"
+    status: "conformant"
+    evidence: "EBS/S3/RDS のデフォルト暗号化を有効化"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.security_guardrails"
+    requirement_id: "foundation.security_guardrails.req-04"
+    status: "deferred"
+    evidence: "KMS CMK の BU × 環境ごとの作成は設計済み。初期構築では AWS マネージドキーを使用し、段階的に CMK に移行"
+    notes: "初期段階ではコストと運用負荷を考慮し、AWS マネージドキーで開始"
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.security_guardrails"
+    requirement_id: "foundation.security_guardrails.req-05"
+    status: "conformant"
+    evidence: "SNS → Slack 通知を CRITICAL/HIGH の検出結果に設定"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # exception_handling
+  # ====================================================================
+  - canonical_element_id: "foundation.exception_handling"
+    requirement_id: "foundation.exception_handling.req-01"
+    status: "conformant"
+    evidence: "deviation_record YAML テンプレートを定義。CCoE 承認プロセスを設計"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.exception_handling"
+    requirement_id: "foundation.exception_handling.req-02"
+    status: "conformant"
+    evidence: "最長 90 日の有効期限を設定。EventBridge Scheduler で期限通知"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.exception_handling"
+    requirement_id: "foundation.exception_handling.req-03"
+    status: "conformant"
+    evidence: "high 以上の逸脱は経営層承認を必須とするプロセスを定義"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.exception_handling"
+    requirement_id: "foundation.exception_handling.req-04"
+    status: "conformant"
+    evidence: "四半期レビューを CCoE が実施するプロセスを定義"
+    notes: ""
+    deviation_ref: ""

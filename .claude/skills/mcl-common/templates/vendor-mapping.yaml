@@ -1,0 +1,26 @@
+# Vendor Mapping Template
+# One file per vendor per scope
+
+schema_version: "1.0"
+artifact_type: "vendor_mapping"
+skill_type: ""           # foundation | shared_platform | product
+artifact_id: ""          # e.g. foundation-mapping-aws
+title: ""
+status: "draft"
+generated_at: ""
+source_refs: []
+decision_refs: []
+inputs_ref: []
+
+vendor: ""               # aws | azure | gcp
+canonical_ref: ""        # reference to the canonical model artifact_id
+
+mappings:
+  - canonical_element_id: ""
+    vendor_service: ""
+    vendor_feature: ""
+    fidelity: ""         # exact | partial | workaround | gap
+    configuration_notes: ""
+    gap_description: ""  # required if fidelity != exact
+    alternatives: []     # other possible mappings considered
+    source_refs: []

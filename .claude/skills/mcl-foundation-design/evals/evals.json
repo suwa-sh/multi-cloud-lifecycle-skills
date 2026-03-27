@@ -1,0 +1,23 @@
+{
+  "skill_name": "mcl-foundation-design",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "3つのBU（営業、開発、管理）を持つ企業で、AWS と Azure を対象に foundation 設計をしてください。セキュリティはSOC2準拠が必要です。環境は本番/ステージング/開発の3面構成で、各BUごとに環境を分離します。予算管理はBU単位で行います。",
+      "expected_output": "foundation-canonical.yaml, foundation-mapping-aws.yaml, foundation-mapping-azure.yaml, foundation-context.yaml, decision records, conformance reports, IaC skeletons for AWS and Azure, target architecture markdown が生成されること",
+      "files": [],
+      "assertions": [
+        {"id": "canonical-model-exists", "description": "Canonical model YAML is generated", "type": "file_exists"},
+        {"id": "aws-mapping-exists", "description": "AWS vendor mapping YAML is generated", "type": "file_exists"},
+        {"id": "azure-mapping-exists", "description": "Azure vendor mapping YAML is generated", "type": "file_exists"},
+        {"id": "foundation-context-exists", "description": "Foundation context YAML is generated", "type": "file_exists"},
+        {"id": "common-metadata-present", "description": "Common metadata fields present in YAMLs", "type": "content_check"},
+        {"id": "3bu-coverage", "description": "All 3 BUs represented", "type": "content_check"},
+        {"id": "3env-coverage", "description": "All 3 environments represented", "type": "content_check"},
+        {"id": "soc2-addressed", "description": "SOC2 compliance addressed", "type": "content_check"},
+        {"id": "vendor-neutral-canonical", "description": "Canonical model is vendor-neutral", "type": "content_check"},
+        {"id": "iac-skeleton-exists", "description": "IaC skeleton files generated", "type": "file_exists"}
+      ]
+    }
+  ]
+}

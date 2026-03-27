@@ -1,0 +1,361 @@
+schema_version: "1.0"
+artifact_type: "canonical_model"
+skill_type: "foundation"
+artifact_id: "foundation-canonical"
+title: "基盤レイヤー Canonical Model"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "AWS Organizations ベストプラクティス"
+  - "AWS Control Tower ガイダンス"
+  - "Azure Landing Zone アーキテクチャ"
+  - "Microsoft Entra ID ドキュメント"
+decision_refs:
+  - "foundation-decision-azure-idp-only"
+  - "foundation-decision-gcp-bigquery-only"
+  - "foundation-decision-cost-allocation"
+inputs_ref:
+  - "foundation-input"
+
+elements:
+  # ====================================================================
+  # 1. organization_boundary — アカウント階層と分離モデル
+  # ====================================================================
+  - id: "foundation.organization_boundary"
+    name: "組織境界"
+    category: "organization_boundary"
+    description: |
+      8 BU × 3 環境（本番/ステージング/開発）のアカウント分離モデルを定義する。
+      CCoE が管理アカウントを保有し、各 BU は環境ごとにワークロードアカウントを持つ。
+      Azure は Entra ID テナントのみ保有し、ワークロード用サブスクリプションは持たない。
+    requirements:
+      - id: "foundation.organization_boundary.req-01"
+        description: "管理アカウント（root/management）はワークロードを配置せず、ガバナンス専用とする"
+        priority: "must"
+        rationale: "最小権限の原則。管理アカウントの侵害リスクを最小化する"
+      - id: "foundation.organization_boundary.req-02"
+        description: "BU ごとに論理的な組織単位（OU 相当）を設け、環境別にアカウントを分離する"
+        priority: "must"
+        rationale: "障害・セキュリティインシデントの影響範囲を BU × 環境に限定する"
+      - id: "foundation.organization_boundary.req-03"
+        description: "共有サービス用のアカウント（ネットワーク、ログ、セキュリティ）を CCoE 配下に設ける"
+        priority: "must"
+        rationale: "共有インフラを集中管理し、一貫したガバナンスを適用する"
+      - id: "foundation.organization_boundary.req-04"
+        description: "サンドボックス OU を設け、検証用アカウントを隔離する"
+        priority: "should"
+        rationale: "検証目的の自由なリソース作成を許可しつつ、本番への影響を防ぐ"
+      - id: "foundation.organization_boundary.req-05"
+        description: "管理アカウントのルートユーザー認証情報を一元管理し、メンバーアカウントのルートアクセスを無効化する"
+        priority: "must"
+        rationale: "AWS Organizations のルートアクセス管理を有効化し、メンバーアカウントのルート認証情報を削除することで攻撃対象面を最小化する"
+      - id: "foundation.organization_boundary.req-06"
+        description: "管理アカウントにグループメールアドレスと専用の連絡先電話番号を設定する"
+        priority: "must"
+        rationale: "アカウント回復時の連絡経路を確保する。個人依存を排除し、チームで管理する"
+      - id: "foundation.organization_boundary.req-07"
+        description: "OU 設計はビジネス目的と共通制御に基づき、組織の報告構造に基づかない"
+        priority: "should"
+        rationale: "AWS ベストプラクティス。ガバナンスの一貫性と変更耐性を確保する"
+    constraints:
+      - "Azure はワークロードアカウント（サブスクリプション）を持たない"
+      - "GCP は BigQuery 専用。データ分析以外のワークロードは配置しない"
+      - "アカウント数上限は AWS Organizations のデフォルトクォータ内とする"
+    dependencies: []
+    source_refs:
+      - "AWS Organizations ベストプラクティス"
+      - "AWS Control Tower ガイダンス"
+
+  # ====================================================================
+  # 2. billing_boundary — コスト帰属と予算管理
+  # ====================================================================
+  - id: "foundation.billing_boundary"
+    name: "課金境界"
+    category: "billing_boundary"
+    description: |
+      BU 単位での予算責任を実現する。共有インフラコストは固定＋変動ハイブリッドモデルで按分する。
+      AWS Cost Categories とタグによる自動按分を基盤とする。
+    requirements:
+      - id: "foundation.billing_boundary.req-01"
+        description: "全リソースに cost-center タグを必須化し、BU への帰属を明確にする"
+        priority: "must"
+        rationale: "コスト可視化の基盤。タグなしリソースの排除により按分精度を確保する"
+      - id: "foundation.billing_boundary.req-02"
+        description: "共有インフラコストの按分ルール（固定＋変動ハイブリッド）を定義し、自動化する"
+        priority: "must"
+        rationale: "手動按分は運用負荷が高く、精度が低下する"
+      - id: "foundation.billing_boundary.req-03"
+        description: "BU ごとの月次予算アラートを設定する"
+        priority: "must"
+        rationale: "予算超過の早期検知により、コスト管理を実効的にする"
+      - id: "foundation.billing_boundary.req-04"
+        description: "shared-service タグで共有リソースを識別し、按分対象を明確化する"
+        priority: "must"
+        rationale: "直課と按分の対象を正確に分離する"
+      - id: "foundation.billing_boundary.req-05"
+        description: "コスト異常検知（Cost Anomaly Detection）を有効化し、想定外のコスト増を自動通知する"
+        priority: "should"
+        rationale: "予算アラートでは捕捉しにくい急激なコスト変動を早期検知する"
+    constraints:
+      - "Azure のコストは Entra ID ライセンスのみ（全社共有コストとして一括管理）"
+    dependencies:
+      - "foundation.organization_boundary"
+    source_refs:
+      - "AWS Cost Management ベストプラクティス"
+
+  # ====================================================================
+  # 3. identity_boundary — ID フェデレーションと特権管理
+  # ====================================================================
+  - id: "foundation.identity_boundary"
+    name: "ID 境界"
+    category: "identity_boundary"
+    description: |
+      Azure Entra ID を唯一の IdP とし、AWS IAM Identity Center へ SAML/SCIM フェデレーションする。
+      全ユーザー認証は Entra ID を経由し、AWS にローカルユーザーを作成しない。
+      特権アクセスは JIT（Just-In-Time）で付与し、常時特権を排除する。
+    requirements:
+      - id: "foundation.identity_boundary.req-01"
+        description: "Entra ID を唯一の IdP とし、AWS IAM Identity Center へ SAML フェデレーションする"
+        priority: "must"
+        rationale: "ID の一元管理により、オンボーディング/オフボーディングの一貫性を確保する"
+      - id: "foundation.identity_boundary.req-02"
+        description: "SCIM プロビジョニングでユーザー/グループを Entra ID → AWS IAM Identity Center に自動同期する"
+        priority: "must"
+        rationale: "手動同期は漏れが発生し、退職者アカウントの残存リスクがある"
+      - id: "foundation.identity_boundary.req-03"
+        description: "AWS にローカル IAM ユーザーを作成しない（ブレークグラス用を除く）"
+        priority: "must"
+        rationale: "IdP を迂回した認証経路を排除し、監査の一貫性を確保する"
+      - id: "foundation.identity_boundary.req-04"
+        description: "ブレークグラス用アカウントを管理アカウントに 2 つ作成し、MFA を設定する"
+        priority: "must"
+        rationale: "IdP 障害時のアクセス経路確保。SOC2 要件"
+      - id: "foundation.identity_boundary.req-05"
+        description: "特権ロール（管理者相当）は JIT アクセスとし、Entra ID PIM または同等の仕組みで制御する"
+        priority: "must"
+        rationale: "常時特権は攻撃対象面を拡大する。SOC2 の最小権限要件"
+      - id: "foundation.identity_boundary.req-06"
+        description: "全ユーザーに MFA を必須化する"
+        priority: "must"
+        rationale: "SOC2 要件。クレデンシャル漏洩時の被害を軽減する"
+      - id: "foundation.identity_boundary.req-07"
+        description: "IAM Identity Center は Organization Instance タイプで構成する（Account Instance は使用しない）"
+        priority: "must"
+        rationale: "Organization Instance のみがマルチアカウントアクセス管理をサポートする。AWS 推奨構成"
+      - id: "foundation.identity_boundary.req-08"
+        description: "ロールグループメンバーシップの定期的なアクセスレビューを実施する"
+        priority: "should"
+        rationale: "SOC2 要件。アクセス権が正当であることを継続的に検証する"
+    constraints:
+      - "Entra ID のライセンスは P1 以上（条件付きアクセス、PIM には P2 が必要）"
+    dependencies: []
+    source_refs:
+      - "Microsoft Entra ID ドキュメント"
+      - "AWS IAM Identity Center ガイド"
+
+  # ====================================================================
+  # 4. policy_enforcement — 予防的コントロールとガードレール
+  # ====================================================================
+  - id: "foundation.policy_enforcement"
+    name: "ポリシー適用"
+    category: "policy_enforcement"
+    description: |
+      AWS Control Tower Controls / SCP / Config Rules による予防的・検出的・プロアクティブコントロールを適用する。
+      Azure は Entra ID の条件付きアクセスポリシーのみ。
+    requirements:
+      - id: "foundation.policy_enforcement.req-01"
+        description: "AWS SCP でリージョン制限を適用する（許可リージョン: ap-northeast-1, us-east-1）"
+        priority: "must"
+        rationale: "データレジデンシーの確保とコスト管理。SOC2 要件"
+      - id: "foundation.policy_enforcement.req-02"
+        description: "AWS SCP で管理アカウントの root ユーザー操作を制限する"
+        priority: "must"
+        rationale: "管理アカウントの意図しない変更を防止する"
+      - id: "foundation.policy_enforcement.req-03"
+        description: "AWS Config Rules でタグ必須ルール（cost-center, environment, owner）を適用する"
+        priority: "must"
+        rationale: "コスト管理とリソース管理の基盤"
+      - id: "foundation.policy_enforcement.req-04"
+        description: "Entra ID 条件付きアクセスで、社外ネットワークからのアクセスに追加認証を要求する"
+        priority: "should"
+        rationale: "リモートアクセスのセキュリティ強化"
+      - id: "foundation.policy_enforcement.req-05"
+        description: "AWS Config Rules で暗号化必須（EBS, S3, RDS）を検出する"
+        priority: "must"
+        rationale: "保存データの暗号化は SOC2 要件"
+      - id: "foundation.policy_enforcement.req-06"
+        description: "AWS Control Tower Controls（予防的/検出的/プロアクティブ）を活用し、ランディングゾーンのドリフトを防止する"
+        priority: "should"
+        rationale: "Control Tower は SCP/Config を統合的に管理し、必須/強く推奨/選択的の3カテゴリでガードレールを提供する"
+    constraints:
+      - "SCP はアカウント単位での適用。リソースレベルの細粒度制御は IAM ポリシーで補完する"
+    dependencies:
+      - "foundation.organization_boundary"
+      - "foundation.identity_boundary"
+    source_refs:
+      - "AWS SCP ベストプラクティス"
+      - "AWS Config マネージドルール"
+
+  # ====================================================================
+  # 5. network_segmentation — 接続モデルとトランジットアーキテクチャ
+  # ====================================================================
+  - id: "foundation.network_segmentation"
+    name: "ネットワーク分離"
+    category: "network_segmentation"
+    description: |
+      AWS Transit Gateway によるハブ&スポークモデルでネットワークを構成する。
+      環境間（本番/ステージング/開発）の通信を分離し、共有サービス VPC 経由でのみ接続する。
+      Azure はネットワークリソースを持たない（IdP のみ）。
+    requirements:
+      - id: "foundation.network_segmentation.req-01"
+        description: "AWS Transit Gateway をハブとし、各アカウントの VPC をスポークとして接続する"
+        priority: "must"
+        rationale: "一貫したルーティングポリシーの適用と運用の簡素化"
+      - id: "foundation.network_segmentation.req-02"
+        description: "本番・ステージング・開発環境間の直接通信を禁止する"
+        priority: "must"
+        rationale: "環境間の意図しないデータ漏洩を防止する"
+      - id: "foundation.network_segmentation.req-03"
+        description: "インターネットへのエグレスは共有 NAT Gateway を経由する"
+        priority: "should"
+        rationale: "エグレストラフィックの一元監視とコスト最適化"
+      - id: "foundation.network_segmentation.req-04"
+        description: "VPC Flow Logs を全 VPC で有効化し、ログアカウントに集約する"
+        priority: "must"
+        rationale: "ネットワーク通信の監査証跡。SOC2 要件"
+      - id: "foundation.network_segmentation.req-05"
+        description: "IP アドレス体系を事前に設計し、CIDR の重複を防ぐ"
+        priority: "must"
+        rationale: "Transit Gateway 経由のルーティングが正しく機能するための前提条件"
+    constraints:
+      - "Azure にはネットワークリソースを配置しない"
+      - "オンプレミス接続が将来必要になった場合は Transit Gateway に Direct Connect を追加する"
+    dependencies:
+      - "foundation.organization_boundary"
+    source_refs:
+      - "AWS Transit Gateway ベストプラクティス"
+      - "AWS VPC 設計ガイド"
+
+  # ====================================================================
+  # 6. audit_aggregation — ログ収集と監査
+  # ====================================================================
+  - id: "foundation.audit_aggregation"
+    name: "監査ログ集約"
+    category: "audit_aggregation"
+    description: |
+      全 AWS アカウントの監査ログを専用のログアカウントに集約する。
+      保持期間は 1 年（SOC2 標準）。改ざん防止を確保する。
+      Entra ID の監査ログも収集対象とする。
+    requirements:
+      - id: "foundation.audit_aggregation.req-01"
+        description: "AWS CloudTrail を全アカウント・全リージョンで有効化し、組織トレイルとして集約する"
+        priority: "must"
+        rationale: "API 操作の完全な監査証跡。SOC2 要件"
+      - id: "foundation.audit_aggregation.req-02"
+        description: "CloudTrail ログを専用ログアカウントの S3 バケットに集約する"
+        priority: "must"
+        rationale: "ログの改ざん防止。ワークロードアカウントから削除不可にする"
+      - id: "foundation.audit_aggregation.req-03"
+        description: "ログ S3 バケットに Object Lock（Governance モード）を適用する"
+        priority: "must"
+        rationale: "SOC2 のログ改ざん防止要件"
+      - id: "foundation.audit_aggregation.req-04"
+        description: "ログ保持期間を 365 日とし、それ以降は Glacier に自動移行する"
+        priority: "must"
+        rationale: "SOC2 要件の 1 年保持を満たしつつ、コストを最適化する"
+      - id: "foundation.audit_aggregation.req-05"
+        description: "Entra ID 監査ログ・サインインログを収集し、ログアカウントに連携する"
+        priority: "should"
+        rationale: "IdP 側の認証イベントも含めた統合的な監査を実現する"
+      - id: "foundation.audit_aggregation.req-06"
+        description: "AWS Config の記録を全アカウントで有効化し、構成変更履歴を保持する"
+        priority: "must"
+        rationale: "リソース構成の変更追跡。SOC2 要件"
+      - id: "foundation.audit_aggregation.req-07"
+        description: "CloudTrail ログファイルの整合性検証を有効化し、ダイジェストファイルで改ざんを検知可能にする"
+        priority: "must"
+        rationale: "SHA-256 ハッシュと RSA デジタル署名により、フォレンジック調査でのログ完全性を保証する"
+      - id: "foundation.audit_aggregation.req-08"
+        description: "CloudTrail を CloudWatch Logs に統合し、セキュリティイベント（認証失敗等）のリアルタイム監視とアラートを設定する"
+        priority: "should"
+        rationale: "S3 保存だけではリアルタイム検知ができない。CloudWatch Alarms と組み合わせて即時対応を実現する"
+    constraints:
+      - "ログアカウントへの書き込み権限は CloudTrail サービスプリンシパルのみに限定する"
+    dependencies:
+      - "foundation.organization_boundary"
+    source_refs:
+      - "AWS CloudTrail ベストプラクティス"
+      - "AWS Security Hub ガイド"
+
+  # ====================================================================
+  # 7. security_guardrails — ベースラインセキュリティポスチャ
+  # ====================================================================
+  - id: "foundation.security_guardrails"
+    name: "セキュリティガードレール"
+    category: "security_guardrails"
+    description: |
+      AWS Security Hub と GuardDuty による脅威検出。
+      暗号化デフォルトと鍵管理の標準化。
+    requirements:
+      - id: "foundation.security_guardrails.req-01"
+        description: "AWS Security Hub を全アカウントで有効化し、セキュリティアカウントに委任管理する"
+        priority: "must"
+        rationale: "セキュリティ状態の一元可視化。SOC2 要件"
+      - id: "foundation.security_guardrails.req-02"
+        description: "AWS GuardDuty を全アカウント・全リージョンで有効化する"
+        priority: "must"
+        rationale: "脅威検出の基盤。不正な API 呼び出しやネットワーク活動を検知する"
+      - id: "foundation.security_guardrails.req-03"
+        description: "EBS・S3・RDS のデフォルト暗号化を有効化する"
+        priority: "must"
+        rationale: "保存データの暗号化。SOC2 要件"
+      - id: "foundation.security_guardrails.req-04"
+        description: "KMS カスタマー管理キー（CMK）を BU/環境ごとに作成し、キーポリシーで分離する"
+        priority: "should"
+        rationale: "暗号化キーの分離により、BU 間のデータアクセスを制限する"
+      - id: "foundation.security_guardrails.req-05"
+        description: "Security Hub の検出結果を通知チャネル（SNS → Slack/Teams 等）に連携する"
+        priority: "should"
+        rationale: "検出結果の迅速な対応を促進する"
+    constraints:
+      - "Security Hub の標準は AWS Foundational Security Best Practices を基準とする"
+    dependencies:
+      - "foundation.organization_boundary"
+      - "foundation.audit_aggregation"
+    source_refs:
+      - "AWS Security Hub ベストプラクティス"
+      - "AWS GuardDuty ガイド"
+
+  # ====================================================================
+  # 8. exception_handling — 逸脱承認プロセス
+  # ====================================================================
+  - id: "foundation.exception_handling"
+    name: "例外処理"
+    category: "exception_handling"
+    description: |
+      ガードレールからの逸脱を管理するプロセスを定義する。
+      期限付き例外とリスク受容の仕組みを設ける。
+    requirements:
+      - id: "foundation.exception_handling.req-01"
+        description: "逸脱申請は deviation_record として文書化し、CCoE が承認する"
+        priority: "must"
+        rationale: "逸脱の可視化と統制。SOC2 監査対応"
+      - id: "foundation.exception_handling.req-02"
+        description: "全ての逸脱に有効期限（最長 90 日）を設定し、期限到来時に再評価する"
+        priority: "must"
+        rationale: "恒久的な例外の蓄積を防ぐ"
+      - id: "foundation.exception_handling.req-03"
+        description: "リスクレベル high 以上の逸脱は経営層の承認を必須とする"
+        priority: "must"
+        rationale: "高リスクの逸脱は事業判断として経営層が責任を持つ"
+      - id: "foundation.exception_handling.req-04"
+        description: "承認済み逸脱の一覧を四半期ごとにレビューする"
+        priority: "should"
+        rationale: "逸脱の棚卸しにより、恒久対応の優先順位付けを行う"
+    constraints:
+      - "逸脱承認プロセスは運用開始前に確立する"
+    dependencies:
+      - "foundation.policy_enforcement"
+      - "foundation.security_guardrails"
+    source_refs:
+      - "SOC2 例外管理ガイダンス"

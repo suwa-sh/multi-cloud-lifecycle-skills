@@ -1,0 +1,11 @@
+{
+  "skill_name": "mcl-product-design",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "foundation と shared platform の context を踏まえて、EC サイトのバックエンド API を AWS と Azure で設計してください。要件: 可用性 99.9%、API レイテンシ 200ms 以内、セール時にトラフィックが通常の10倍にスパイク、RDB（PostgreSQL）とキャッシュ（Redis）を使用、個人情報を扱うためデータ暗号化必須。",
+      "expected_output": "product-workload-model.yaml, vendor mappings, product-observability.yaml, product-cost-hints.yaml, IaC skeletons が生成されること",
+      "files": []
+    }
+  ]
+}

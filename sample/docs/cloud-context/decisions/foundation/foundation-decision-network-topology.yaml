@@ -1,0 +1,58 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "foundation"
+artifact_id: "foundation-decision-network-topology"
+title: "ネットワークトポロジーの選定（ハブ&スポーク vs メッシュ）"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "AWS Transit Gateway ベストプラクティス"
+  - "AWS VPC 設計ガイド"
+inputs_ref:
+  - "foundation-input"
+
+decision:
+  context: |
+    8 BU × 3 環境 = 最大 24 ワークロード VPC + 共有サービス VPC のネットワーク接続モデルを
+    決定する必要がある。環境間の分離を維持しつつ、共有サービスへのアクセスを提供する。
+  conflict_type: "capability"
+  options:
+    - id: "hub-and-spoke-tgw"
+      description: "Transit Gateway によるハブ&スポーク"
+      pros:
+        - "中央集権的なルーティング管理"
+        - "環境別ルートテーブルによる分離が容易"
+        - "スケーラビリティが高い（数千 VPC まで対応）"
+        - "将来の Direct Connect 接続が容易"
+      cons:
+        - "Transit Gateway のデータ処理料金が発生"
+        - "単一障害点になりうる（ただし AWS マネージドで高可用性）"
+    - id: "vpc-peering-mesh"
+      description: "VPC ピアリングによるメッシュ接続"
+      pros:
+        - "データ処理料金が低い"
+        - "設定がシンプル（少数 VPC の場合）"
+      cons:
+        - "VPC 数が増えるとピアリング数が爆発的に増加（N×(N-1)/2）"
+        - "環境間の分離がルーティングレベルで困難"
+        - "推移的ルーティングが不可"
+    - id: "hybrid-tgw-peering"
+      description: "同一環境内は VPC ピアリング、環境間は Transit Gateway"
+      pros:
+        - "コスト最適化の可能性"
+      cons:
+        - "運用が複雑"
+        - "接続パターンの一貫性が失われる"
+  chosen_option: "hub-and-spoke-tgw"
+  rationale: |
+    8 BU × 3 環境で最大 24 + α の VPC を接続する必要があり、VPC ピアリングではスケールしない。
+    Transit Gateway のハブ&スポークにより、環境別ルートテーブルで本番/非本番の分離を
+    シンプルに実現できる。将来のオンプレミス接続（Direct Connect）への拡張も考慮。
+  risk_assessment: |
+    リスク: Transit Gateway のデータ処理料金がコスト増要因
+    緩和策: VPC 内通信を優先し、TGW 経由の通信を最小化する設計とする
+    発生確率: 高（料金は確実に発生）
+    影響度: 低（共有サービスへのアクセスが主な通信で、量は限定的）
+  affected_elements:
+    - "foundation.network_segmentation"
+  review_date: "2027-03-28"

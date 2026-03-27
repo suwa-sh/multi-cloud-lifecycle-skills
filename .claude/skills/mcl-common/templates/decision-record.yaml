@@ -1,0 +1,25 @@
+# Decision Record Template
+
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: ""           # foundation | shared_platform | product
+artifact_id: ""          # e.g. foundation-decision-001
+title: ""
+status: "draft"          # draft | accepted | superseded
+generated_at: ""
+source_refs: []
+inputs_ref: []
+
+decision:
+  context: ""            # why this decision was needed
+  conflict_type: ""      # capability | granularity | feature_gap | naming | behavioral
+  options:
+    - id: ""
+      description: ""
+      pros: []
+      cons: []
+  chosen_option: ""      # id of the selected option
+  rationale: ""
+  risk_assessment: ""
+  affected_elements: []  # canonical element ids affected
+  review_date: ""        # when to revisit this decision

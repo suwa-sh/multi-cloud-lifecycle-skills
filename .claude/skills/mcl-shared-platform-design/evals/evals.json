@@ -1,0 +1,11 @@
+{
+  "skill_name": "mcl-shared-platform-design",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "foundation context を踏まえて、AWS と Azure を対象に共有プラットフォームを設計してください。EKS/AKS ベースの Kubernetes 共有クラスタ、Prometheus + Grafana による統合監視、GitHub Actions ベースの CI/CD パイプライン、共有シークレット管理を含めてください。",
+      "expected_output": "shared-platform-canonical.yaml, service-catalog.yaml, vendor mappings, shared-platform-context.yaml, IaC skeletons が生成されること",
+      "files": []
+    }
+  ]
+}

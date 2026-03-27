@@ -1,0 +1,268 @@
+schema_version: "1.0"
+artifact_type: "implementation_spec"
+skill_type: "foundation"
+artifact_id: "foundation-impl-azure"
+title: "基盤レイヤー Azure 実装仕様（IdP 専用）"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "Microsoft Entra ID ドキュメント"
+  - "Entra ID PIM ガイド"
+decision_refs:
+  - "foundation-decision-azure-idp-only"
+inputs_ref:
+  - "foundation-canonical"
+  - "foundation-mapping-azure"
+
+vendor: "azure"
+canonical_ref: "foundation-canonical"
+mapping_ref: "foundation-mapping-azure"
+
+components:
+  # ====================================================================
+  # 1. Entra ID テナント
+  # ====================================================================
+  - id: "azure-entra-tenant"
+    name: "Entra ID テナント構成"
+    canonical_element_id: "foundation.organization_boundary"
+    vendor_service: "Microsoft Entra ID"
+    configuration:
+      tenant:
+        purpose: "全社 IdP（AWS へのフェデレーション）"
+        domain: "# TODO: カスタムドメインを設定"
+      licensing:
+        plan: "Entra ID P2"
+        reason: "PIM、条件付きアクセス高度機能、Identity Protection に必要"
+    dependencies: []
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "Entra ID P2 ライセンスが有効であること"
+        type: "runtime"
+        description: "Azure Portal またはGraph API で確認"
+
+  # ====================================================================
+  # 2. Entra ID ユーザー・グループ
+  # ====================================================================
+  - id: "azure-entra-users-groups"
+    name: "Entra ID ユーザー・グループ構成"
+    canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "Microsoft Entra ID"
+    configuration:
+      security_groups:
+        bu_groups:
+          - name: "SG-BU-CCoE"
+            members: "CCoE メンバー"
+          - name: "SG-BU-Marketing"
+            members: "マーケティングメンバー"
+          - name: "SG-BU-Sales"
+            members: "営業メンバー"
+          - name: "SG-BU-Development"
+            members: "開発メンバー"
+          - name: "SG-BU-CustomerSuccess"
+            members: "カスタマーサクセスメンバー"
+          - name: "SG-BU-Accounting"
+            members: "経理メンバー"
+          - name: "SG-BU-GeneralAffairs"
+            members: "総務メンバー"
+          - name: "SG-BU-Executive"
+            members: "経営メンバー"
+        role_groups:
+          - name: "SG-AWS-Admin"
+            description: "AWS 管理者（CCoE のみ、PIM 経由で JIT アクティベーション）"
+          - name: "SG-AWS-PowerUser-Dev"
+            description: "AWS 開発者（開発・ステージング環境）"
+          - name: "SG-AWS-ReadOnly-Prod"
+            description: "AWS 参照者（本番環境）"
+          - name: "SG-AWS-Billing"
+            description: "AWS 請求情報アクセス（経理）"
+      break_glass:
+        accounts: 2
+        naming: "breakglass-01@{domain}, breakglass-02@{domain}"
+        mfa: "FIDO2 セキュリティキー"
+        conditional_access_exclusion: true
+        password_policy: "20 文字以上、複雑性必須"
+    dependencies:
+      - "azure-entra-tenant"
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "全 BU グループが作成されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+      - rule: "ブレークグラスアカウントが条件付きアクセスから除外されていること"
+        type: "runtime"
+        description: "条件付きアクセスポリシーの除外リストを確認"
+
+  # ====================================================================
+  # 3. SAML / SCIM フェデレーション
+  # ====================================================================
+  - id: "azure-entra-federation"
+    name: "Entra ID → AWS フェデレーション構成"
+    canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "Microsoft Entra ID"
+    configuration:
+      enterprise_application:
+        name: "AWS IAM Identity Center"
+        sso_type: "SAML 2.0"
+        identifier: "# TODO: AWS IAM Identity Center の SAML エンティティ ID"
+        reply_url: "# TODO: AWS IAM Identity Center の ACS URL"
+        claims:
+          - name: "NameID"
+            source: "user.userprincipalname"
+          - name: "groups"
+            source: "user.groups"
+      scim_provisioning:
+        target: "AWS IAM Identity Center"
+        endpoint: "# TODO: IAM Identity Center SCIM エンドポイント"
+        token: "# TODO: SCIM ベアラートークン"
+        scope: "SG-AWS-* グループのメンバーのみ"
+        sync_interval: "40 分（Entra ID デフォルト）"
+    dependencies:
+      - "azure-entra-users-groups"
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "SAML SSO が動作すること"
+        type: "runtime"
+        description: "テストユーザーで SSO ログインを確認"
+      - rule: "SCIM プロビジョニングが正常に同期されること"
+        type: "runtime"
+        description: "プロビジョニングログでエラーがないことを確認"
+
+  # ====================================================================
+  # 4. PIM（特権 ID 管理）
+  # ====================================================================
+  - id: "azure-entra-pim"
+    name: "Entra ID PIM 構成"
+    canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "Microsoft Entra ID PIM"
+    configuration:
+      eligible_assignments:
+        - role_group: "SG-AWS-Admin"
+          max_duration: "PT8H"
+          require_approval: true
+          approvers: "CCoE メンバー"
+          require_justification: true
+          require_mfa: true
+      notifications:
+        activation: "CCoE Slack チャネルに通知"
+        expiry_warning: "有効期限 1 時間前に通知"
+    dependencies:
+      - "azure-entra-users-groups"
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "PIM が有効で eligible assignment が設定されていること"
+        type: "runtime"
+        description: "Graph API で PIM 設定を確認"
+
+  # ====================================================================
+  # 5. 条件付きアクセス
+  # ====================================================================
+  - id: "azure-entra-conditional-access"
+    name: "Entra ID 条件付きアクセス構成"
+    canonical_element_id: "foundation.policy_enforcement"
+    vendor_service: "Microsoft Entra ID"
+    configuration:
+      policies:
+        - name: "CA-001-MFA-AllUsers"
+          description: "全ユーザーに MFA を必須化"
+          conditions:
+            users: "全ユーザー（ブレークグラス除外）"
+            apps: "全アプリケーション"
+          grant: "MFA 必須"
+        - name: "CA-002-BlockHighRiskSignIn"
+          description: "高リスクサインインをブロック"
+          conditions:
+            users: "全ユーザー（ブレークグラス除外）"
+            sign_in_risk: "High"
+          grant: "ブロック"
+        - name: "CA-003-RequireMFAMediumRisk"
+          description: "中リスクサインインで MFA 要求"
+          conditions:
+            users: "全ユーザー"
+            sign_in_risk: "Medium"
+          grant: "MFA 必須"
+        - name: "CA-004-SessionControl"
+          description: "サインイン頻度制限"
+          conditions:
+            users: "全ユーザー"
+            apps: "AWS IAM Identity Center"
+          session: "サインイン頻度 8 時間"
+    dependencies:
+      - "azure-entra-users-groups"
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "全条件付きアクセスポリシーが有効であること"
+        type: "runtime"
+        description: "Graph API でポリシーステータスを確認"
+
+  # ====================================================================
+  # 6. 監査ログエクスポート
+  # ====================================================================
+  - id: "azure-entra-audit-export"
+    name: "Entra ID 監査ログエクスポート構成"
+    canonical_element_id: "foundation.audit_aggregation"
+    vendor_service: "Microsoft Entra ID"
+    configuration:
+      diagnostic_settings:
+        name: "entra-to-aws-export"
+        logs:
+          - category: "AuditLogs"
+            enabled: true
+          - category: "SignInLogs"
+            enabled: true
+          - category: "RiskyUsers"
+            enabled: true
+          - category: "UserRiskEvents"
+            enabled: true
+        destination: "# TODO: Event Hub または Storage Account を選択"
+      aws_integration:
+        method: "Event Hub → EventBridge Partner Event Source → S3"
+        destination_bucket: "log-archive アカウントの S3"
+        prefix: "entra-id-logs/"
+    dependencies:
+      - "azure-entra-tenant"
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "Diagnostic Settings が有効であること"
+        type: "runtime"
+        description: "Azure Monitor で設定を確認"
+
+  # ====================================================================
+  # 7. Entra ID Protection
+  # ====================================================================
+  - id: "azure-entra-protection"
+    name: "Entra ID Protection 構成"
+    canonical_element_id: "foundation.security_guardrails"
+    vendor_service: "Microsoft Entra ID Protection"
+    configuration:
+      user_risk_policy:
+        risk_level: "High"
+        action: "パスワード変更を強制"
+        detection_rules:
+          - "漏洩資格情報（Leaked Credentials）"
+          - "Azure AD 脅威インテリジェンス"
+      sign_in_risk_policy:
+        risk_level: "Medium"
+        action: "MFA 要求"
+        detection_rules:
+          - "あり得ない移動（Impossible Travel）"
+          - "匿名 IP アドレスからのサインイン"
+          - "マルウェアリンク IP アドレス"
+          - "異常なトークン発行"
+          - "パスワードスプレー攻撃"
+      identity_secure_score:
+        review_frequency: "月次"
+        target_score: "# TODO: 目標スコアを設定"
+      access_reviews:
+        enabled: true
+        scope: "SG-AWS-Admin, SG-AWS-PowerUser-Dev, SG-AWS-Billing グループメンバーシップ"
+        frequency: "四半期"
+        reviewer: "CCoE メンバー"
+        auto_apply: false
+        description: "SOC2 要件。ロールグループのメンバーシップが正当であることを定期検証する"
+    dependencies:
+      - "azure-entra-tenant"
+    iac_module: "infra/foundation/azure/entra-id"
+    validation_rules:
+      - rule: "Identity Protection ポリシーが有効であること"
+        type: "runtime"
+        description: "Graph API で確認"

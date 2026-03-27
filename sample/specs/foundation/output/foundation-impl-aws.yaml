@@ -1,0 +1,457 @@
+schema_version: "1.0"
+artifact_type: "implementation_spec"
+skill_type: "foundation"
+artifact_id: "foundation-impl-aws"
+title: "基盤レイヤー AWS 実装仕様"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "AWS Organizations ベストプラクティス"
+  - "AWS Control Tower ガイダンス"
+  - "AWS Security Reference Architecture"
+decision_refs:
+  - "foundation-decision-azure-idp-only"
+  - "foundation-decision-cost-allocation"
+  - "foundation-decision-network-topology"
+inputs_ref:
+  - "foundation-canonical"
+  - "foundation-mapping-aws"
+
+vendor: "aws"
+canonical_ref: "foundation-canonical"
+mapping_ref: "foundation-mapping-aws"
+
+components:
+  # ====================================================================
+  # 1. AWS Organizations
+  # ====================================================================
+  - id: "aws-organizations"
+    name: "AWS Organizations 構成"
+    canonical_element_id: "foundation.organization_boundary"
+    vendor_service: "AWS Organizations"
+    configuration:
+      management_account:
+        name: "management"
+        purpose: "組織管理専用（ワークロード配置なし）"
+        root_mfa: "ハードウェアMFAトークン"
+      ou_structure:
+        - name: "Security"
+          accounts:
+            - name: "log-archive"
+              purpose: "CloudTrail, Config, VPC Flow Logs の集約"
+            - name: "security-tooling"
+              purpose: "Security Hub, GuardDuty の委任管理"
+        - name: "Infrastructure"
+          accounts:
+            - name: "network-hub"
+              purpose: "Transit Gateway, 共有 NAT Gateway, DNS"
+            - name: "shared-services"
+              purpose: "共有 CI/CD, コンテナレジストリ等"
+        - name: "Workloads"
+          child_ous:
+            - name: "CCoE"
+              accounts: ["ccoe-production", "ccoe-staging", "ccoe-development"]
+            - name: "Marketing"
+              accounts: ["marketing-production", "marketing-staging", "marketing-development"]
+            - name: "Sales"
+              accounts: ["sales-production", "sales-staging", "sales-development"]
+            - name: "Development"
+              accounts: ["development-production", "development-staging", "development-development"]
+            - name: "CustomerSuccess"
+              accounts: ["customer-success-production", "customer-success-staging", "customer-success-development"]
+            - name: "Accounting"
+              accounts: ["accounting-production", "accounting-staging", "accounting-development"]
+            - name: "GeneralAffairs"
+              accounts: ["general-affairs-production", "general-affairs-staging", "general-affairs-development"]
+            - name: "Executive"
+              accounts: ["executive-production", "executive-staging", "executive-development"]
+        - name: "Sandbox"
+          accounts:
+            - name: "sandbox"
+              purpose: "検証用（制限付き）"
+      total_accounts: 30
+    dependencies: []
+    iac_module: "infra/foundation/aws/modules/organizations"
+    validation_rules:
+      - rule: "管理アカウントにワークロードリソースが存在しないこと"
+        type: "runtime"
+        description: "Config Rule で管理アカウントの EC2, RDS 等を検出"
+      - rule: "全アカウントが OU に所属していること"
+        type: "static"
+        description: "Terraform plan で OU 割り当てを確認"
+
+  # ====================================================================
+  # 2. コスト管理
+  # ====================================================================
+  - id: "aws-cost-management"
+    name: "AWS コスト管理構成"
+    canonical_element_id: "foundation.billing_boundary"
+    vendor_service: "AWS Cost Management"
+    configuration:
+      cost_allocation_tags:
+        required:
+          - key: "cost-center"
+            description: "BU 識別タグ"
+            allowed_values: ["ccoe", "marketing", "sales", "development", "customer-success", "accounting", "general-affairs", "executive"]
+          - key: "environment"
+            description: "環境識別タグ"
+            allowed_values: ["production", "staging", "development"]
+          - key: "owner"
+            description: "管理者識別タグ"
+        optional:
+          - key: "shared-service"
+            description: "共有リソース識別タグ"
+            allowed_values: ["true"]
+      cost_categories:
+        - name: "fixed-infrastructure"
+          description: "基盤固定費（8 BU 均等割）"
+          rules:
+            - "Transit Gateway 関連"
+            - "CloudTrail 組織トレイル"
+            - "Security Hub / GuardDuty"
+            - "共有 NAT Gateway"
+        - name: "variable-workload"
+          description: "変動費（利用量比例）"
+          rules:
+            - "cost-center タグに基づき BU に帰属"
+      budgets:
+        - name: "{bu}-monthly-budget"
+          type: "COST"
+          alert_thresholds: [80, 100, 120]
+          notification: "SNS → Slack"
+      cost_anomaly_detection:
+        enabled: true
+        monitors:
+          - name: "organization-anomaly-monitor"
+            type: "DIMENSIONAL"
+            dimension: "SERVICE"
+            threshold: 0
+            notification: "SNS → Slack"
+    dependencies:
+      - "aws-organizations"
+    iac_module: "infra/foundation/aws/modules/cost-management"
+    validation_rules:
+      - rule: "全リソースに cost-center タグが付与されていること"
+        type: "runtime"
+        description: "Config Rule required-tags で検出"
+      - rule: "Cost Categories が定義されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 3. IAM Identity Center
+  # ====================================================================
+  - id: "aws-identity-center"
+    name: "AWS IAM Identity Center 構成"
+    canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "AWS IAM Identity Center"
+    configuration:
+      instance_type: "Organization Instance"
+      identity_source: "External IdP (Azure Entra ID)"
+      saml:
+        metadata_url: "# TODO: Entra ID SAML メタデータ URL を設定"
+        session_duration: "PT8H"
+      scim:
+        endpoint: "# TODO: IAM Identity Center SCIM エンドポイント"
+        token: "# TODO: SCIM ベアラートークン（Secrets Manager に保存）"
+      permission_sets:
+        - name: "AdministratorAccess"
+          description: "フルアクセス（CCoE JIT のみ）"
+          managed_policies: ["arn:aws:iam::aws:policy/AdministratorAccess"]
+          session_duration: "PT1H"
+        - name: "PowerUserAccess"
+          description: "開発者向け（IAM 以外のフルアクセス）"
+          managed_policies: ["arn:aws:iam::aws:policy/PowerUserAccess"]
+          session_duration: "PT8H"
+        - name: "ReadOnlyAccess"
+          description: "参照のみ"
+          managed_policies: ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
+          session_duration: "PT8H"
+        - name: "BillingAccess"
+          description: "経理向け請求情報アクセス"
+          managed_policies: ["arn:aws:iam::aws:policy/job-function/Billing"]
+          session_duration: "PT8H"
+      break_glass:
+        accounts: ["management"]
+        iam_users: 2
+        mfa: "hardware-totp"
+        password_policy:
+          minimum_length: 20
+          require_symbols: true
+    dependencies:
+      - "aws-organizations"
+    iac_module: "infra/foundation/aws/modules/identity-center"
+    validation_rules:
+      - rule: "ローカル IAM ユーザーがブレークグラス以外に存在しないこと"
+        type: "runtime"
+        description: "Config Rule iam-user-no-policies-check"
+      - rule: "全 Permission Set に session_duration が設定されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 4. SCP / Config Rules
+  # ====================================================================
+  - id: "aws-policy-enforcement"
+    name: "AWS ポリシー適用構成"
+    canonical_element_id: "foundation.policy_enforcement"
+    vendor_service: "AWS Organizations SCP, AWS Config"
+    configuration:
+      scps:
+        - name: "deny-outside-regions"
+          description: "許可リージョン外の操作を拒否"
+          target_ous: ["Workloads", "Sandbox"]
+          allowed_regions: ["ap-northeast-1", "us-east-1"]
+        - name: "deny-root-actions"
+          description: "root ユーザーの操作を制限"
+          target_ous: ["Workloads", "Infrastructure", "Security"]
+        - name: "require-tags"
+          description: "必須タグなしのリソース作成を拒否"
+          target_ous: ["Workloads"]
+          required_tags: ["cost-center", "environment", "owner"]
+        - name: "deny-cloudtrail-disable"
+          description: "CloudTrail の無効化を禁止"
+          target_ous: ["Root"]
+        - name: "deny-s3-public"
+          description: "S3 パブリックアクセスブロック解除を禁止"
+          target_ous: ["Workloads", "Infrastructure"]
+        - name: "deny-iam-user-creation"
+          description: "ローカル IAM ユーザー作成を禁止（管理アカウント除外）"
+          target_ous: ["Workloads", "Infrastructure", "Security"]
+      config_rules:
+        - name: "required-tags"
+          type: "managed"
+          scope: "全アカウント"
+        - name: "encrypted-volumes"
+          type: "managed"
+          scope: "全アカウント"
+        - name: "s3-bucket-server-side-encryption-enabled"
+          type: "managed"
+          scope: "全アカウント"
+        - name: "rds-storage-encrypted"
+          type: "managed"
+          scope: "全アカウント"
+        - name: "cloudtrail-enabled"
+          type: "managed"
+          scope: "全アカウント"
+        - name: "iam-user-no-policies-check"
+          type: "managed"
+          scope: "全アカウント"
+    dependencies:
+      - "aws-organizations"
+    iac_module: "infra/foundation/aws/modules/policy-enforcement"
+    validation_rules:
+      - rule: "SCP が対象 OU にアタッチされていること"
+        type: "static"
+        description: "Terraform plan で確認"
+      - rule: "Config Rules が全アカウントで有効であること"
+        type: "runtime"
+        description: "Config Aggregator で確認"
+
+  # ====================================================================
+  # 5. ネットワーク（Transit Gateway）
+  # ====================================================================
+  - id: "aws-network"
+    name: "AWS ネットワーク構成"
+    canonical_element_id: "foundation.network_segmentation"
+    vendor_service: "AWS VPC, Transit Gateway"
+    configuration:
+      transit_gateway:
+        region: "ap-northeast-1"
+        account: "network-hub"
+        asn: 64512
+        route_tables:
+          - name: "production"
+            description: "本番環境 VPC 用"
+            routes: ["shared-services VPC", "egress"]
+          - name: "non-production"
+            description: "ステージング・開発環境 VPC 用"
+            routes: ["shared-services VPC", "egress"]
+          - name: "shared-services"
+            description: "共有サービス VPC 用"
+            routes: ["全 VPC"]
+      vpc_cidr_plan:
+        shared_services: "10.0.0.0/16"
+        workload_pattern: "10.{bu_id}.{env_id}0.0/20"
+        bu_id_map:
+          ccoe: 1
+          marketing: 2
+          sales: 3
+          development: 4
+          customer-success: 5
+          accounting: 6
+          general-affairs: 7
+          executive: 8
+        env_id_map:
+          production: 0
+          staging: 1
+          development: 2
+      nat_gateway:
+        type: "shared"
+        account: "network-hub"
+        vpc: "shared-services"
+        az_count: 2
+      vpc_flow_logs:
+        destination: "log-archive アカウントの S3"
+        traffic_type: "ALL"
+        retention_days: 365
+      dns:
+        service: "Route 53 Private Hosted Zone"
+        zone: "internal.example.com"
+        shared_via: "Transit Gateway DNS 共有"
+    dependencies:
+      - "aws-organizations"
+    iac_module: "infra/foundation/aws/modules/network"
+    validation_rules:
+      - rule: "CIDR が重複していないこと"
+        type: "static"
+        description: "Terraform plan でサブネット CIDR を検証"
+      - rule: "環境間の直接ルーティングが存在しないこと"
+        type: "runtime"
+        description: "TGW ルートテーブルのルートを検証"
+
+  # ====================================================================
+  # 6. 監査ログ
+  # ====================================================================
+  - id: "aws-audit"
+    name: "AWS 監査ログ構成"
+    canonical_element_id: "foundation.audit_aggregation"
+    vendor_service: "AWS CloudTrail, AWS Config, S3"
+    configuration:
+      cloudtrail:
+        type: "organization-trail"
+        name: "org-management-trail"
+        s3_bucket_account: "log-archive"
+        s3_bucket_name: "org-cloudtrail-logs"
+        is_multi_region: true
+        enable_log_file_validation: true
+        include_global_service_events: true
+        cloudwatch_logs:
+          enabled: true
+          log_group: "/aws/cloudtrail/org-management-trail"
+          retention_days: 90
+          metric_filters:
+            - name: "ConsoleSignInFailures"
+              pattern: '{ ($.eventName = "ConsoleLogin") && ($.errorMessage = "Failed authentication") }'
+              alarm: "CloudTrail-ConsoleSignInFailures"
+            - name: "UnauthorizedAPICalls"
+              pattern: '{ ($.errorCode = "*UnauthorizedAccess") || ($.errorCode = "AccessDenied*") }'
+              alarm: "CloudTrail-UnauthorizedAPICalls"
+            - name: "RootAccountUsage"
+              pattern: '{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }'
+              alarm: "CloudTrail-RootAccountUsage"
+        data_events:
+          - service: "S3"
+            read_write: "All"
+          - service: "Lambda"
+            read_write: "All"
+      s3_log_bucket:
+        account: "log-archive"
+        object_lock:
+          mode: "GOVERNANCE"
+          retention_days: 365
+        lifecycle:
+          - transition_to: "GLACIER_DEEP_ARCHIVE"
+            after_days: 365
+          - expiration_days: 2555  # 7 年（将来の規制対応予備）
+        versioning: true
+        public_access_block: true
+        encryption: "SSE-S3"
+      config:
+        aggregator_account: "security-tooling"
+        recording: "全リソース、全アカウント"
+      entra_id_log_integration:
+        method: "Entra ID Diagnostic Settings → Event Hub → EventBridge → S3"
+        frequency: "ニアリアルタイム"
+        destination: "log-archive アカウントの S3"
+    dependencies:
+      - "aws-organizations"
+    iac_module: "infra/foundation/aws/modules/audit"
+    validation_rules:
+      - rule: "CloudTrail が全アカウントで有効であること"
+        type: "runtime"
+        description: "Config Rule cloudtrail-enabled"
+      - rule: "S3 Object Lock が有効であること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 7. セキュリティガードレール
+  # ====================================================================
+  - id: "aws-security"
+    name: "AWS セキュリティガードレール構成"
+    canonical_element_id: "foundation.security_guardrails"
+    vendor_service: "AWS Security Hub, GuardDuty, KMS"
+    configuration:
+      security_hub:
+        delegated_admin: "security-tooling"
+        standards:
+          - "AWS Foundational Security Best Practices v1.0.0"
+        auto_enable_new_accounts: true
+        regions: ["ap-northeast-1", "us-east-1"]
+      guardduty:
+        delegated_admin: "security-tooling"
+        auto_enable_new_accounts: true
+        features:
+          - "S3 Protection"
+          - "EKS Audit Log Monitoring"
+        regions: ["ap-northeast-1", "us-east-1"]
+      kms:
+        key_policy: "BU × 環境ごとに CMK を作成"
+        key_rotation: "自動（年次）"
+        key_naming: "{bu}-{env}-cmk"
+      notifications:
+        security_hub:
+          filter: "CRITICAL, HIGH"
+          destination: "SNS → Slack"
+        guardduty:
+          filter: "HIGH, MEDIUM"
+          destination: "SNS → Slack"
+      default_encryption:
+        ebs: "有効（アカウントレベル設定）"
+        s3: "SSE-S3 デフォルト"
+        rds: "有効"
+    dependencies:
+      - "aws-organizations"
+      - "aws-audit"
+    iac_module: "infra/foundation/aws/modules/security"
+    validation_rules:
+      - rule: "Security Hub が全アカウントで有効であること"
+        type: "runtime"
+        description: "Security Hub メンバーアカウント一覧で確認"
+      - rule: "GuardDuty が全アカウント・対象リージョンで有効であること"
+        type: "runtime"
+        description: "GuardDuty メンバーアカウント一覧で確認"
+      - rule: "EBS デフォルト暗号化が有効であること"
+        type: "runtime"
+        description: "Config Rule encrypted-volumes"
+
+  # ====================================================================
+  # 8. 例外処理
+  # ====================================================================
+  - id: "aws-exception-handling"
+    name: "AWS 例外処理構成"
+    canonical_element_id: "foundation.exception_handling"
+    vendor_service: "AWS 運用プロセス"
+    configuration:
+      deviation_workflow:
+        request: "deviation_record YAML を作成"
+        approval: "CCoE レビュー → 承認（high 以上は経営層承認）"
+        implementation: "対象 OU/アカウントに例外 SCP を一時適用"
+        expiry: "最長 90 日"
+        notification: "EventBridge Scheduler → Lambda → Slack 通知"
+      config_suppression:
+        method: "Config Rules Suppression"
+        requires: "承認済み deviation_record"
+      quarterly_review:
+        scope: "全承認済み逸脱"
+        owner: "CCoE"
+        output: "逸脱棚卸しレポート"
+    dependencies:
+      - "aws-organizations"
+      - "aws-policy-enforcement"
+    iac_module: "infra/foundation/aws/modules/exception-handling"
+    validation_rules:
+      - rule: "期限切れの逸脱が存在しないこと"
+        type: "runtime"
+        description: "deviation_record の expiry_date を定期チェック"

@@ -1,0 +1,70 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "foundation"
+artifact_id: "foundation-decision-gcp-bigquery-only"
+title: "GCP の利用範囲を BigQuery（データ分析基盤）のみに限定する"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP ランディングゾーン設計"
+  - "Cloud Billing"
+inputs_ref:
+  - "foundation-input"
+
+decision:
+  context: |
+    データ分析基盤を BigQuery ベースで構築する方針が決定された。
+    GCP を新たに対象クラウドに追加するにあたり、利用範囲を決定する必要がある。
+    現在 AWS がフルスタック、Azure が IdP 専用であり、GCP は 3 番目のクラウドとなる。
+  conflict_type: "capability"
+  options:
+    - id: "gcp-full-landing-zone"
+      description: "GCP にフルランディングゾーンを構築し、将来のワークロード拡張に備える"
+      pros:
+        - "将来の GCP ワークロード拡張が容易"
+        - "GCP のベストプラクティスに完全準拠"
+      cons:
+        - "運用コスト・学習コストが大幅に増加（3 クラウドのフル管理）"
+        - "CCoE の運用負荷が大幅に増加"
+        - "現時点で BigQuery 以外の計画がない"
+    - id: "gcp-bigquery-only"
+      description: "GCP は BigQuery 専用とし、限定的なフォルダ/プロジェクト構成のみ構築する"
+      pros:
+        - "運用範囲が最小限で管理が容易"
+        - "BigQuery のサーバーレス特性を活かし、インフラ管理を最小化"
+        - "コストが BigQuery 利用料 + 最小限の基盤のみ"
+        - "AWS の既存スキルセットを最大限活用できる"
+      cons:
+        - "将来 GCP に他のワークロードを配置する場合、追加のランディングゾーン設計が必要"
+        - "GCP の高度なネットワーク機能を活用できない"
+    - id: "gcp-data-platform"
+      description: "GCP をデータプラットフォーム全体として構築（BigQuery + Dataflow + Pub/Sub 等）"
+      pros:
+        - "データパイプライン全体を GCP で完結"
+        - "GCP のデータ系サービスのエコシステムを活用"
+      cons:
+        - "スコープが広がり、基盤設計の複雑性が増す"
+        - "AWS と GCP 間のデータ転送コストが増大"
+  chosen_option: "gcp-bigquery-only"
+  rationale: |
+    YAGNI の原則に従い、現時点で必要な BigQuery のみにスコープを限定する。
+    BigQuery はサーバーレスであり、VPC やコンピュートリソースの管理が不要なため、
+    基盤レイヤーの設計は最小限で済む。
+    ID 管理は Entra ID → Cloud Identity フェデレーションで AWS と統一し、
+    監査ログは AWS 側のログアカウントに二重保管することでクロスクラウドの監査統合を実現する。
+    将来的に GCP のスコープを拡張する場合は、canonical model の GCP マッピングを更新する。
+  risk_assessment: |
+    リスク: BigQuery 以外の GCP サービス（Dataflow, Pub/Sub 等）が必要になった場合、
+    基盤の拡張が必要
+    緩和策: 組織/フォルダ/IAM の基盤は再利用可能。追加サービスの組織ポリシーと IAM ロールを追加する
+    発生確率: 中（データパイプラインの成長に伴い拡張可能性あり）
+    影響度: 低（BigQuery 基盤の上に拡張するため、ゼロからの設計は不要）
+  affected_elements:
+    - "foundation.organization_boundary"
+    - "foundation.billing_boundary"
+    - "foundation.identity_boundary"
+    - "foundation.policy_enforcement"
+    - "foundation.network_segmentation"
+    - "foundation.audit_aggregation"
+    - "foundation.security_guardrails"
+  review_date: "2027-03-28"

@@ -1,0 +1,264 @@
+schema_version: "1.0"
+artifact_type: "implementation_spec"
+skill_type: "foundation"
+artifact_id: "foundation-impl-gcp"
+title: "基盤レイヤー GCP 実装仕様（BigQuery 専用）"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP ランディングゾーン設計"
+  - "GCP リソース階層"
+  - "Cloud Identity ドキュメント"
+decision_refs:
+  - "foundation-decision-gcp-bigquery-only"
+inputs_ref:
+  - "foundation-canonical"
+  - "foundation-mapping-gcp"
+
+vendor: "gcp"
+canonical_ref: "foundation-canonical"
+mapping_ref: "foundation-mapping-gcp"
+
+components:
+  # ====================================================================
+  # 1. GCP Organization / Folder / Project
+  # ====================================================================
+  - id: "gcp-resource-hierarchy"
+    name: "GCP リソース階層構成"
+    canonical_element_id: "foundation.organization_boundary"
+    vendor_service: "Cloud Resource Manager"
+    configuration:
+      organization:
+        domain: "# TODO: Cloud Identity ドメインを設定"
+      folders:
+        - name: "analytics"
+          description: "データ分析専用フォルダ"
+          projects:
+            - name: "# TODO: {org-prefix}-analytics-production"
+              environment: "production"
+              labels:
+                environment: "production"
+                cost-center: "ccoe"
+                service: "bigquery"
+            - name: "# TODO: {org-prefix}-analytics-staging"
+              environment: "staging"
+              labels:
+                environment: "staging"
+                cost-center: "ccoe"
+                service: "bigquery"
+            - name: "# TODO: {org-prefix}-analytics-development"
+              environment: "development"
+              labels:
+                environment: "development"
+                cost-center: "ccoe"
+                service: "bigquery"
+    dependencies: []
+    iac_module: "infra/foundation/gcp/modules/resource-hierarchy"
+    validation_rules:
+      - rule: "全プロジェクトが analytics フォルダ配下にあること"
+        type: "static"
+        description: "Terraform plan で確認"
+      - rule: "必須ラベル（environment, cost-center, service）が設定されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 2. Cloud Identity / IAM
+  # ====================================================================
+  - id: "gcp-identity"
+    name: "GCP ID 管理構成"
+    canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "Cloud Identity, Google Cloud IAM"
+    configuration:
+      cloud_identity:
+        federation: "Entra ID → Cloud Identity SAML 2.0 フェデレーション"
+        user_sync: "# TODO: GCDS または Entra ID SCIM プロビジョニングを選択"
+        domain: "# TODO: Cloud Identity ドメインを設定"
+      iam_bindings:
+        organization_level:
+          - role: "roles/resourcemanager.folderViewer"
+            members: "group:sg-aws-readonly@{domain}"
+        folder_level:
+          - role: "roles/bigquery.admin"
+            members: "group:sg-ccoe@{domain}"
+            folder: "analytics"
+        project_level:
+          production:
+            - role: "roles/bigquery.dataViewer"
+              members: "group:sg-analysts@{domain}"
+            - role: "roles/bigquery.jobUser"
+              members: "group:sg-analysts@{domain}"
+          staging:
+            - role: "roles/bigquery.dataEditor"
+              members: "group:sg-data-engineers@{domain}"
+            - role: "roles/bigquery.jobUser"
+              members: "group:sg-data-engineers@{domain}"
+          development:
+            - role: "roles/bigquery.dataEditor"
+              members: "group:sg-data-engineers@{domain}"
+            - role: "roles/bigquery.admin"
+              members: "group:sg-ccoe@{domain}"
+      service_accounts:
+        - name: "sa-data-ingestion"
+          description: "AWS → GCP データ連携用"
+          project: "analytics-production"
+          roles: ["roles/bigquery.dataEditor", "roles/storage.objectCreator"]
+          workload_identity_federation:
+            provider: "# TODO: AWS アカウント ID を設定"
+            attribute_mapping: "google.subject=assertion.sub"
+        - name: "sa-saas-ingestion"
+          description: "外部 SaaS → BigQuery 連携用"
+          project: "analytics-production"
+          roles: ["roles/bigquery.dataEditor"]
+      local_users: "禁止（Cloud Identity 経由のみ）"
+      service_account_key_creation: "禁止（Workload Identity Federation を使用）"
+    dependencies:
+      - "gcp-resource-hierarchy"
+    iac_module: "infra/foundation/gcp/modules/identity"
+    validation_rules:
+      - rule: "サービスアカウントキーが作成されていないこと"
+        type: "runtime"
+        description: "組織ポリシー iam.disableServiceAccountKeyCreation で強制"
+      - rule: "全 IAM バインディングがグループベースであること（個人ユーザーへの直接付与なし）"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 3. 組織ポリシー
+  # ====================================================================
+  - id: "gcp-org-policy"
+    name: "GCP 組織ポリシー構成"
+    canonical_element_id: "foundation.policy_enforcement"
+    vendor_service: "Organization Policy Service"
+    configuration:
+      constraints:
+        - name: "constraints/gcp.resourceLocations"
+          description: "リソースのロケーション制限"
+          target: "analytics フォルダ"
+          allowed_values: ["asia-northeast1"]
+        - name: "constraints/iam.disableServiceAccountKeyCreation"
+          description: "サービスアカウントキー作成を禁止"
+          target: "analytics フォルダ"
+          enforced: true
+        - name: "constraints/compute.skipDefaultNetworkCreation"
+          description: "デフォルト VPC 作成をスキップ"
+          target: "analytics フォルダ"
+          enforced: true
+        - name: "constraints/sql.restrictPublicIp"
+          description: "Cloud SQL パブリック IP を制限（将来の拡張に備え）"
+          target: "analytics フォルダ"
+          enforced: true
+        - name: "constraints/iam.allowedPolicyMemberDomains"
+          description: "許可されたドメインのみに IAM ポリシー付与を制限"
+          target: "analytics フォルダ"
+          allowed_values: ["# TODO: Cloud Identity ドメイン ID"]
+    dependencies:
+      - "gcp-resource-hierarchy"
+    iac_module: "infra/foundation/gcp/modules/org-policy"
+    validation_rules:
+      - rule: "全制約が analytics フォルダに適用されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 4. VPC Service Controls
+  # ====================================================================
+  - id: "gcp-vpc-service-controls"
+    name: "VPC Service Controls 構成"
+    canonical_element_id: "foundation.network_segmentation"
+    vendor_service: "VPC Service Controls"
+    configuration:
+      access_policy:
+        name: "analytics-perimeter-policy"
+      service_perimeter:
+        name: "analytics-perimeter"
+        type: "PERIMETER_TYPE_REGULAR"
+        resources:
+          - "projects/# TODO: analytics-production プロジェクト番号"
+          - "projects/# TODO: analytics-staging プロジェクト番号"
+          - "projects/# TODO: analytics-development プロジェクト番号"
+        restricted_services:
+          - "bigquery.googleapis.com"
+          - "storage.googleapis.com"
+        ingress_policies:
+          - description: "AWS からのデータ連携を許可"
+            source: "# TODO: Workload Identity Federation 経由の AWS アクセス"
+            allowed_services: ["bigquery.googleapis.com", "storage.googleapis.com"]
+        egress_policies: []
+    dependencies:
+      - "gcp-resource-hierarchy"
+    iac_module: "infra/foundation/gcp/modules/vpc-sc"
+    validation_rules:
+      - rule: "BigQuery がサービスペリメータに含まれていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 5. Cloud Audit Logs
+  # ====================================================================
+  - id: "gcp-audit"
+    name: "GCP 監査ログ構成"
+    canonical_element_id: "foundation.audit_aggregation"
+    vendor_service: "Cloud Logging"
+    configuration:
+      audit_log_config:
+        - service: "bigquery.googleapis.com"
+          log_types: ["ADMIN_READ", "DATA_READ", "DATA_WRITE"]
+        - service: "allServices"
+          log_types: ["ADMIN_READ"]
+      log_sinks:
+        - name: "analytics-audit-sink"
+          description: "全プロジェクトの監査ログを集約"
+          scope: "analytics フォルダ"
+          destination: "storage.googleapis.com/# TODO: ログ専用バケット"
+          filter: 'logName:"cloudaudit.googleapis.com"'
+          include_children: true
+      log_bucket:
+        project: "# TODO: ログ専用プロジェクト（analytics フォルダ内）"
+        location: "asia-northeast1"
+        retention_days: 365
+        locked: true
+      cross_cloud_export:
+        description: "GCP ログを AWS ログアカウントの S3 にも保管（クロスクラウド監査統合）"
+        method: "Cloud Storage → Transfer Service → AWS S3"
+        frequency: "日次"
+        destination: "log-archive アカウントの S3"
+    dependencies:
+      - "gcp-resource-hierarchy"
+    iac_module: "infra/foundation/gcp/modules/audit"
+    validation_rules:
+      - rule: "BigQuery の Data Access Logs が有効であること"
+        type: "runtime"
+        description: "Cloud Logging で確認"
+      - rule: "Log Sink がフォルダレベルで設定されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 6. Security Command Center
+  # ====================================================================
+  - id: "gcp-security"
+    name: "GCP セキュリティ構成"
+    canonical_element_id: "foundation.security_guardrails"
+    vendor_service: "Security Command Center"
+    configuration:
+      tier: "Standard"
+      scope: "analytics フォルダ配下の全プロジェクト"
+      services:
+        - name: "Security Health Analytics"
+          enabled: true
+          description: "セキュリティ構成の自動チェック"
+      encryption:
+        bigquery: "Google マネージドキー（デフォルト）"
+        cloud_storage: "Google マネージドキー（デフォルト）"
+        cmek: "# TODO: product レイヤーで CMEK の要否を決定"
+      notifications:
+        method: "Pub/Sub → Cloud Functions → Slack/Teams"
+        severity_filter: "HIGH, CRITICAL"
+    dependencies:
+      - "gcp-resource-hierarchy"
+    iac_module: "infra/foundation/gcp/modules/security"
+    validation_rules:
+      - rule: "Security Command Center が有効であること"
+        type: "runtime"
+        description: "SCC API で確認"

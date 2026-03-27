@@ -1,0 +1,174 @@
+schema_version: "1.0"
+artifact_type: "vendor_mapping"
+skill_type: "foundation"
+artifact_id: "foundation-mapping-azure"
+title: "基盤レイヤー Azure ベンダーマッピング（IdP 専用）"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "Microsoft Entra ID ドキュメント"
+  - "Azure Landing Zone アーキテクチャ"
+decision_refs:
+  - "foundation-decision-azure-idp-only"
+inputs_ref:
+  - "foundation-canonical"
+
+vendor: "azure"
+canonical_ref: "foundation-canonical"
+
+mappings:
+  # ====================================================================
+  # 1. organization_boundary — Azure はテナントのみ
+  # ====================================================================
+  - canonical_element_id: "foundation.organization_boundary"
+    vendor_service: "Azure Entra ID"
+    vendor_feature: "Entra ID テナント"
+    fidelity: "partial"
+    configuration_notes: |
+      - 単一 Entra ID テナントを使用
+      - ワークロード用のサブスクリプション・リソースグループは作成しない
+      - テナント管理は CCoE が担当
+    gap_description: "ワークロードの組織境界は AWS 側で実現。Azure はテナント管理のみ"
+    alternatives: []
+    source_refs:
+      - "Microsoft Entra ID ドキュメント"
+
+  # ====================================================================
+  # 2. billing_boundary — Entra ID ライセンスコストのみ
+  # ====================================================================
+  - canonical_element_id: "foundation.billing_boundary"
+    vendor_service: "Azure サブスクリプション管理"
+    vendor_feature: "Entra ID ライセンス"
+    fidelity: "partial"
+    configuration_notes: |
+      - Azure のコストは Entra ID ライセンス費用のみ
+      - 全社共有コストとして一括管理（BU 按分なし）
+      - Entra ID P2 ライセンス（PIM、条件付きアクセス高度機能に必要）
+    gap_description: "Azure のコスト管理は最小限。リソースレベルの按分は不要"
+    alternatives: []
+    source_refs: []
+
+  # ====================================================================
+  # 3. identity_boundary — Azure の主要責務
+  # ====================================================================
+  - canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "Microsoft Entra ID"
+    vendor_feature: "Entra ID, PIM, 条件付きアクセス, SAML/SCIM"
+    fidelity: "exact"
+    configuration_notes: |
+      - Entra ID テナント構成:
+        - 全社員をユーザーとして管理
+        - BU ごとのセキュリティグループを作成
+        - 環境ごとのアクセスグループ（production-readonly, staging-developer 等）
+      - SAML フェデレーション:
+        - エンタープライズアプリケーション: AWS IAM Identity Center
+        - SAML 2.0 SSO 構成
+        - クレーム: NameID, groups, roles
+      - SCIM プロビジョニング:
+        - Entra ID → AWS IAM Identity Center への自動同期
+        - ユーザー・グループの作成/更新/無効化を自動化
+      - PIM（Privileged Identity Management）:
+        - AWS 管理者ロール: 最大 8 時間の JIT アクティベーション
+        - 承認者: CCoE メンバー
+        - アクティベーション時の理由入力必須
+      - 条件付きアクセス:
+        - MFA: 全ユーザー必須
+        - リスクベース認証: サインインリスク Medium 以上で追加認証
+        - デバイス準拠: 管理端末からのアクセスを優先（段階的導入）
+      - ブレークグラス:
+        - 緊急アクセスアカウント × 2（条件付きアクセスから除外）
+        - FIDO2 セキュリティキーで保護
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "Microsoft Entra ID ドキュメント"
+      - "Entra ID PIM ガイド"
+
+  # ====================================================================
+  # 4. policy_enforcement — 条件付きアクセスのみ
+  # ====================================================================
+  - canonical_element_id: "foundation.policy_enforcement"
+    vendor_service: "Microsoft Entra ID"
+    vendor_feature: "条件付きアクセスポリシー"
+    fidelity: "partial"
+    configuration_notes: |
+      - 条件付きアクセスポリシー:
+        - MFA 必須（全ユーザー、全アプリケーション）
+        - リスクベース: High リスクサインインのブロック
+        - セッション制御: 8 時間でサインイン頻度制限
+      - Azure Policy / Blueprints は使用しない（ワークロードなし）
+    gap_description: "AWS リソースへのポリシー適用は AWS SCP/Config で実施。Azure は認証ポリシーのみ"
+    alternatives: []
+    source_refs:
+      - "Entra ID 条件付きアクセスガイド"
+
+  # ====================================================================
+  # 5. network_segmentation — Azure はスコープ外
+  # ====================================================================
+  - canonical_element_id: "foundation.network_segmentation"
+    vendor_service: "N/A"
+    vendor_feature: "N/A"
+    fidelity: "gap"
+    configuration_notes: |
+      - Azure にネットワークリソースは配置しない
+      - ネットワーク分離は AWS 側で完結する
+    gap_description: "Azure は IdP 専用のため、ネットワーク分離のスコープ外"
+    alternatives: []
+    source_refs: []
+
+  # ====================================================================
+  # 6. audit_aggregation — Entra ID ログのみ
+  # ====================================================================
+  - canonical_element_id: "foundation.audit_aggregation"
+    vendor_service: "Microsoft Entra ID"
+    vendor_feature: "Entra ID 監査ログ, サインインログ"
+    fidelity: "partial"
+    configuration_notes: |
+      - Entra ID ログ:
+        - 監査ログ: ディレクトリ変更、アプリケーション管理、ユーザー管理
+        - サインインログ: 認証成功/失敗、条件付きアクセス評価結果
+      - ログエクスポート:
+        - Entra ID → Diagnostic Settings → Event Hub → AWS EventBridge → S3
+        - または Entra ID → Diagnostic Settings → Storage Account → 定期エクスポート
+      - 保持期間: Entra ID P2 ライセンスで 30 日間 UI 上で閲覧可能
+      - 長期保持は AWS 側のログアカウント S3 で 365 日保持
+    gap_description: "Entra ID 単体では 30 日の保持。長期保持は AWS へのエクスポートで対応"
+    alternatives:
+      - "Azure Monitor Log Analytics Workspace に保存（Azure 内で完結させる場合）"
+    source_refs:
+      - "Entra ID 監査ログドキュメント"
+
+  # ====================================================================
+  # 7. security_guardrails — Entra ID セキュリティのみ
+  # ====================================================================
+  - canonical_element_id: "foundation.security_guardrails"
+    vendor_service: "Microsoft Entra ID"
+    vendor_feature: "Entra ID Protection, Identity Secure Score"
+    fidelity: "partial"
+    configuration_notes: |
+      - Entra ID Protection:
+        - ユーザーリスクポリシー: High リスクユーザーにパスワード変更を強制
+        - サインインリスクポリシー: Medium 以上で MFA 要求
+      - Identity Secure Score: 定期的なスコア確認と改善
+      - Defender for Cloud は使用しない（ワークロードなし）
+    gap_description: "AWS リソースのセキュリティガードレールは AWS Security Hub/GuardDuty で実施"
+    alternatives: []
+    source_refs:
+      - "Entra ID Protection ドキュメント"
+
+  # ====================================================================
+  # 8. exception_handling — Entra ID 設定変更のみ
+  # ====================================================================
+  - canonical_element_id: "foundation.exception_handling"
+    vendor_service: "Microsoft Entra ID"
+    vendor_feature: "条件付きアクセス除外、PIM 例外"
+    fidelity: "partial"
+    configuration_notes: |
+      - 条件付きアクセスの例外:
+        - ブレークグラスアカウントの除外（恒久）
+        - 特定アプリケーションの一時除外（deviation_record で管理）
+      - PIM の例外:
+        - 緊急時の永続的ロール割り当て（deviation_record で管理、最長 90 日）
+    gap_description: "逸脱管理プロセスは AWS と同じく YAML ベースの deviation_record で統一"
+    alternatives: []
+    source_refs: []

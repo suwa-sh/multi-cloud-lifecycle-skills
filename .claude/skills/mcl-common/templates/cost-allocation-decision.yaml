@@ -1,0 +1,97 @@
+# 共有インフラコスト按分ルール Decision Record テンプレート
+
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "foundation"
+artifact_id: ""              # e.g. foundation-decision-cost-allocation
+title: "共有インフラコスト按分ルールの選定"
+status: "draft"              # draft | accepted | superseded
+generated_at: ""
+source_refs: []
+inputs_ref: []
+
+decision:
+  context: |
+    複数 BU が共有する基盤インフラ（ネットワーク、ID 基盤、ログ基盤、セキュリティサービス等）の
+    コストをどの BU にどう配分するかを決定する必要がある。
+    按分ルールは billing_boundary の canonical model、タグ/ラベル設計、
+    クラウドのコスト配分機能（AWS Cost Categories / Azure Cost Management）の設定に影響する。
+  conflict_type: "capability"
+  options:
+    - id: "even_split"
+      description: "均等割 — コスト ÷ BU 数"
+      pros:
+        - "シンプルで運用コストが低い"
+        - "計測基盤が不要"
+        - "導入初期に適する"
+      cons:
+        - "利用量に差がある場合に不公平"
+        - "コスト意識が育ちにくい"
+    - id: "usage_based"
+      description: "利用量比例 — リソース消費量（CPU時間、ストレージ量、リクエスト数等）に応じて配分"
+      pros:
+        - "最も公平な按分"
+        - "コスト意識が向上する"
+        - "FinOps のベストプラクティスに沿う"
+      cons:
+        - "計測基盤の構築・運用が必要"
+        - "メトリクス定義の合意に時間がかかる"
+    - id: "headcount_based"
+      description: "ヘッドカウント比例 — BU の人数比で按分"
+      pros:
+        - "人事データから算出でき計測が容易"
+        - "ID 基盤など人数相関サービスに適する"
+      cons:
+        - "人数と実利用量が乖離する場合がある"
+        - "BU の業務内容によって不公平になりうる"
+    - id: "revenue_based"
+      description: "売上/予算比例 — BU の収益または予算比で按分"
+      pros:
+        - "経営層への説明が容易"
+        - "事業規模に応じた配分"
+      cons:
+        - "IT 利用量との相関が低い場合がある"
+        - "売上変動の影響を受ける"
+    - id: "hybrid"
+      description: "固定＋変動ハイブリッド — 基盤固定費は均等割、変動費は利用量比例"
+      pros:
+        - "固定費と変動費の性質に合った按分"
+        - "最も一般的な実運用パターン"
+        - "段階的に利用量比例の比率を増やせる"
+      cons:
+        - "固定/変動の分類基準の定義が必要"
+        - "運用がやや複雑"
+    - id: "direct_charge"
+      description: "直課（ダイレクトチャージ） — タグで特定 BU に直接紐付け、共有分のみ按分"
+      pros:
+        - "専用リソースのコストが正確に帰属する"
+        - "共有分の按分範囲が限定される"
+      cons:
+        - "タグ付けの徹底が必要"
+        - "共有分の按分ルールは別途必要"
+  chosen_option: ""          # 選定した option の id
+  rationale: ""              # 選定理由
+  risk_assessment: ""        # リスクと緩和策
+  affected_elements:
+    - "billing_boundary"
+  review_date: ""            # 見直し予定日（按分ルールは年次見直しを推奨）
+
+implementation_notes:
+  aws:
+    service: "AWS Cost Categories"
+    description: "コスト配分ルールを Cost Categories で定義し、自動按分を実現する"
+    tag_requirements:
+      - "cost-center タグの必須化（SCP で強制）"
+      - "shared-service タグによる共有リソース識別"
+  azure:
+    service: "Azure Cost Management"
+    description: "コスト配分ルールで共有コストを自動配分する"
+    tag_requirements:
+      - "CostCenter タグの必須化（Azure Policy で強制）"
+      - "SharedService タグによる共有リソース識別"
+  gcp:
+    service: "Cloud Billing / Labels"
+    description: "ラベルベースのコスト配分と BigQuery エクスポートで按分を実現する"
+    tag_requirements:
+      - "cost_center ラベルの必須化（Org Policy で強制）"
+      - "shared_service ラベルによる共有リソース識別"

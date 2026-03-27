@@ -1,0 +1,64 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "foundation"
+artifact_id: "foundation-decision-azure-idp-only"
+title: "Azure の利用範囲を Entra ID（IdP）のみに限定する"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "Microsoft Entra ID ドキュメント"
+  - "AWS IAM Identity Center ガイド"
+inputs_ref:
+  - "foundation-input"
+
+decision:
+  context: |
+    マルチクラウド構成において、Azure の利用範囲を決定する必要がある。
+    組織として AWS をフルスタックの主要クラウドとし、Azure は Entra ID による
+    ID 管理（IdP）のみに利用する方針が示されている。
+    この方針により、Azure 側のランディングゾーン設計範囲が大幅に限定される。
+  conflict_type: "capability"
+  options:
+    - id: "azure-full-landing-zone"
+      description: "Azure にもフルランディングゾーンを構築し、ワークロード配置可能にする"
+      pros:
+        - "将来のワークロード移行が容易"
+        - "マルチクラウドの冗長性確保"
+      cons:
+        - "運用コスト・学習コストが大幅に増加"
+        - "現時点でワークロード配置の計画がない"
+        - "CCoE の運用負荷が倍増する"
+    - id: "azure-idp-only"
+      description: "Azure は Entra ID テナントのみ保有し、IdP として利用する"
+      pros:
+        - "運用範囲が最小限で管理が容易"
+        - "Entra ID の強力な ID 管理機能を活用できる"
+        - "コストが Entra ID ライセンスのみ"
+        - "AWS 側の設計に集中できる"
+      cons:
+        - "将来 Azure にワークロードを配置する場合、追加のランディングゾーン設計が必要"
+    - id: "azure-minimal-landing-zone"
+      description: "Azure に最小限のランディングゾーン（管理グループ、ポリシー）を構築し、将来に備える"
+      pros:
+        - "将来のワークロード配置への備え"
+      cons:
+        - "現時点では不要なリソースとコストが発生"
+        - "使われないインフラの陳腐化リスク"
+  chosen_option: "azure-idp-only"
+  rationale: |
+    現時点で Azure にワークロードを配置する計画がなく、Entra ID の IdP 機能のみを利用する。
+    YAGNI の原則に従い、必要になった時点で Azure ランディングゾーンを拡張する。
+    Entra ID は AWS IAM Identity Center との SAML/SCIM 連携が成熟しており、
+    IdP 専用構成でも十分に機能する。
+  risk_assessment: |
+    リスク: 将来 Azure にワークロードを配置する場合、ランディングゾーンの追加設計が必要
+    緩和策: canonical model が Azure マッピングの雛形を保持しているため、拡張時のベースラインがある
+    発生確率: 低（現時点で計画なし）
+    影響度: 中（設計・実装に数週間を要する）
+  affected_elements:
+    - "foundation.organization_boundary"
+    - "foundation.billing_boundary"
+    - "foundation.network_segmentation"
+    - "foundation.audit_aggregation"
+    - "foundation.security_guardrails"
+  review_date: "2027-03-28"

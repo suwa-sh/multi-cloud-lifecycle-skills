@@ -1,0 +1,82 @@
+# Common Metadata Schema
+# All YAML artifacts must include these fields
+
+type: object
+required:
+  - schema_version
+  - artifact_type
+  - skill_type
+  - artifact_id
+  - title
+  - status
+  - generated_at
+  - source_refs
+  - decision_refs
+  - inputs_ref
+
+properties:
+  schema_version:
+    type: string
+    pattern: "^\\d+\\.\\d+$"
+    description: "Schema version in semver major.minor format"
+
+  artifact_type:
+    type: string
+    enum:
+      - source_snapshot
+      - source_summary
+      - canonical_model
+      - vendor_mapping
+      - decision_record
+      - deviation_record
+      - implementation_spec
+      - conformance_report
+      - test_fixture
+      - expected_output
+      - context
+      - service_catalog
+      - workload_model
+      - observability_spec
+      - cost_optimization_hints
+
+  skill_type:
+    type: string
+    enum:
+      - foundation
+      - shared_platform
+      - product
+
+  artifact_id:
+    type: string
+    pattern: "^[a-z][a-z0-9-]+$"
+    description: "Unique identifier for this artifact"
+
+  title:
+    type: string
+
+  status:
+    type: string
+    enum:
+      - draft
+      - review
+      - approved
+      - superseded
+
+  generated_at:
+    type: string
+    format: date-time
+
+  source_refs:
+    type: array
+    items:
+      type: string
+
+  decision_refs:
+    type: array
+    items:
+      type: string
+
+  inputs_ref:
+    type: array
+    items:
+      type: string

@@ -1,0 +1,196 @@
+schema_version: "1.0"
+artifact_type: "vendor_mapping"
+skill_type: "foundation"
+artifact_id: "foundation-mapping-gcp"
+title: "基盤レイヤー GCP ベンダーマッピング（BigQuery 専用）"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP ランディングゾーン設計"
+  - "GCP リソース階層"
+  - "GCP 組織ポリシー"
+  - "Cloud Identity ドキュメント"
+  - "Cloud Audit Logs"
+  - "Cloud Billing"
+decision_refs:
+  - "foundation-decision-gcp-bigquery-only"
+inputs_ref:
+  - "foundation-canonical"
+
+vendor: "gcp"
+canonical_ref: "foundation-canonical"
+
+mappings:
+  # ====================================================================
+  # 1. organization_boundary — GCP プロジェクト階層（限定スコープ）
+  # ====================================================================
+  - canonical_element_id: "foundation.organization_boundary"
+    vendor_service: "Google Cloud Resource Manager"
+    vendor_feature: "Organization, Folders, Projects"
+    fidelity: "partial"
+    configuration_notes: |
+      - GCP Organization: 既存の Cloud Identity 組織を使用
+      - フォルダ構成:
+        - analytics/ （データ分析専用フォルダ）
+          - analytics-production （本番プロジェクト）
+          - analytics-staging （ステージングプロジェクト）
+          - analytics-development （開発プロジェクト）
+      - プロジェクト命名規則: {org-prefix}-analytics-{env}
+      - BigQuery 以外のワークロードは配置しない
+    gap_description: "フルランディングゾーンは構築しない。データ分析用の限定的なフォルダ/プロジェクト構成のみ"
+    alternatives: []
+    source_refs:
+      - "GCP リソース階層"
+      - "GCP ランディングゾーン設計"
+
+  # ====================================================================
+  # 2. billing_boundary — GCP 課金アカウント
+  # ====================================================================
+  - canonical_element_id: "foundation.billing_boundary"
+    vendor_service: "Cloud Billing"
+    vendor_feature: "Billing Account, Labels, Budgets"
+    fidelity: "partial"
+    configuration_notes: |
+      - 単一の Cloud Billing Account で 3 プロジェクトを管理
+      - ラベル:
+        - cost-center（必須）: BU 識別
+        - environment（必須）: 環境識別
+        - service: "bigquery"（固定）
+      - Budget Alerts: プロジェクトごとに月次予算アラート設定
+      - BigQuery のコストは全社共有の分析基盤コストとして按分
+      - BigQuery エディション（Standard/Enterprise）の選択は product レイヤーで決定
+    gap_description: "AWS Cost Categories 相当の自動按分機能はない。BigQuery エクスポート + Looker Studio で可視化"
+    alternatives:
+      - "BigQuery BI Engine による内部コスト可視化"
+    source_refs:
+      - "Cloud Billing"
+
+  # ====================================================================
+  # 3. identity_boundary — Cloud Identity フェデレーション
+  # ====================================================================
+  - canonical_element_id: "foundation.identity_boundary"
+    vendor_service: "Cloud Identity, Google Cloud IAM"
+    vendor_feature: "Cloud Identity, SAML Federation, IAM Roles"
+    fidelity: "exact"
+    configuration_notes: |
+      - Cloud Identity:
+        - Entra ID → Cloud Identity へ SAML 2.0 フェデレーション
+        - Google Cloud Directory Sync (GCDS) または Entra ID SCIM でユーザー/グループ同期
+      - IAM ロール:
+        - roles/bigquery.admin: CCoE（分析基盤管理）
+        - roles/bigquery.dataEditor: データエンジニア（開発・ステージング環境）
+        - roles/bigquery.dataViewer: アナリスト（本番環境参照）
+        - roles/bigquery.jobUser: クエリ実行者
+      - サービスアカウント:
+        - データ連携用サービスアカウント（AWS → GCP バッチ連携）
+        - 外部 SaaS 連携用サービスアカウント
+      - ローカルユーザー作成禁止（Cloud Identity 経由のみ）
+      - Workload Identity Federation: AWS から GCP API を呼び出す場合に使用
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "Cloud Identity ドキュメント"
+
+  # ====================================================================
+  # 4. policy_enforcement — 組織ポリシー
+  # ====================================================================
+  - canonical_element_id: "foundation.policy_enforcement"
+    vendor_service: "Google Cloud Organization Policy"
+    vendor_feature: "Organization Policy Constraints"
+    fidelity: "partial"
+    configuration_notes: |
+      - 組織ポリシー制約:
+        - constraints/gcp.resourceLocations: asia-northeast1 のみ許可
+        - constraints/iam.disableServiceAccountKeyCreation: サービスアカウントキー作成を禁止（Workload Identity Federation を使用）
+        - constraints/compute.skipDefaultNetworkCreation: デフォルト VPC 作成をスキップ
+        - constraints/sql.restrictPublicIp: パブリック IP の制限
+      - BigQuery 固有:
+        - データセットレベルの IAM でアクセス制御
+        - VPC Service Controls で BigQuery への外部アクセスを制限
+    gap_description: "AWS SCP のような階層的なポリシー継承はあるが、粒度が異なる。リソースレベルの制御は IAM で補完"
+    alternatives: []
+    source_refs:
+      - "GCP 組織ポリシー"
+
+  # ====================================================================
+  # 5. network_segmentation — VPC Service Controls のみ
+  # ====================================================================
+  - canonical_element_id: "foundation.network_segmentation"
+    vendor_service: "VPC Service Controls"
+    vendor_feature: "Service Perimeter"
+    fidelity: "partial"
+    configuration_notes: |
+      - VPC Service Controls:
+        - BigQuery を含むサービスペリメータを作成
+        - 許可されたプロジェクトからのみ BigQuery API にアクセス可能
+        - AWS からのデータ連携は Ingress Rule で許可
+      - VPC ネットワーク: BigQuery はサーバーレスのため VPC は最小限
+        - Private Google Access を有効化（内部通信のみ）
+    gap_description: "Transit Gateway 相当のネットワーク接続は不要。VPC Service Controls による論理的な境界のみ"
+    alternatives: []
+    source_refs:
+      - "GCP ランディングゾーン設計"
+
+  # ====================================================================
+  # 6. audit_aggregation — Cloud Audit Logs
+  # ====================================================================
+  - canonical_element_id: "foundation.audit_aggregation"
+    vendor_service: "Cloud Logging, Cloud Audit Logs"
+    vendor_feature: "Admin Activity Logs, Data Access Logs, Cloud Storage Export"
+    fidelity: "exact"
+    configuration_notes: |
+      - Cloud Audit Logs:
+        - Admin Activity Logs: 自動有効化（無料、400 日保持）
+        - Data Access Logs: BigQuery に対して有効化（クエリ実行、データ読み取りの記録）
+        - System Event Logs: 自動有効化
+      - ログエクスポート:
+        - 組織レベルの Log Sink で全プロジェクトのログを集約
+        - エクスポート先: Cloud Storage バケット（ログ専用プロジェクト）
+        - 長期保持: AWS ログアカウントの S3 に二重保管（クロスクラウド監査統合）
+      - 保持期間:
+        - Cloud Logging: 30 日（デフォルト）
+        - Cloud Storage エクスポート: 365 日
+        - AWS S3 二重保管: 365 日 + Glacier 移行
+    gap_description: ""
+    alternatives:
+      - "BigQuery への直接エクスポート（分析用途に最適だが、改ざん防止は Cloud Storage が適切）"
+    source_refs:
+      - "Cloud Audit Logs"
+
+  # ====================================================================
+  # 7. security_guardrails — Security Command Center
+  # ====================================================================
+  - canonical_element_id: "foundation.security_guardrails"
+    vendor_service: "Security Command Center"
+    vendor_feature: "Security Health Analytics, Event Threat Detection"
+    fidelity: "partial"
+    configuration_notes: |
+      - Security Command Center（Standard Tier）:
+        - Security Health Analytics: プロジェクトのセキュリティ構成をチェック
+        - 有効化: analytics フォルダ配下の全プロジェクト
+      - BigQuery 暗号化:
+        - デフォルト暗号化（Google マネージドキー）
+        - CMEK（Customer Managed Encryption Key）は product レイヤーで決定
+      - 通知: Pub/Sub → Cloud Functions → Slack/Teams
+    gap_description: "AWS Security Hub/GuardDuty ほどの機能はない。BigQuery 専用のためスコープは限定的"
+    alternatives:
+      - "Security Command Center Premium（より高度な脅威検出だが、BigQuery 専用には過剰）"
+    source_refs:
+      - "GCP ランディングゾーン設計"
+
+  # ====================================================================
+  # 8. exception_handling — 逸脱管理
+  # ====================================================================
+  - canonical_element_id: "foundation.exception_handling"
+    vendor_service: "GCP 運用プロセス"
+    vendor_feature: "deviation_record ベースの逸脱管理"
+    fidelity: "partial"
+    configuration_notes: |
+      - AWS / Azure と同じ deviation_record プロセスで統一
+      - 組織ポリシーの一時的な緩和が必要な場合:
+        1. deviation_record を作成し CCoE が承認
+        2. 対象プロジェクトに例外ポリシーを一時適用
+        3. 有効期限（最長 90 日）を設定
+    gap_description: "AWS と同様、組み込みの承認ワークフローはない。プロセスとしての運用が必要"
+    alternatives: []
+    source_refs: []

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv .claude/skills/mcl-foundation-design.md .claude/skills/mcl-foundation-design/SKILL.md)",
+      "Bash(mv .claude/skills/mcl-shared-platform-design.md .claude/skills/mcl-shared-platform-design/SKILL.md)",
+      "Bash(mv .claude/skills/mcl-product-design.md .claude/skills/mcl-product-design/SKILL.md)",
+      "Bash(cp mcl-common/references/* .claude/skills/mcl-common/references/)",
+      "Bash(cp mcl-common/schemas/* .claude/skills/mcl-common/schemas/)",
+      "Bash(cp mcl-common/templates/* .claude/skills/mcl-common/templates/)",
+      "Bash(ln -s ../mcl-common/references .claude/skills/mcl-foundation-design/references)",
+      "Bash(ln -s ../mcl-common/references .claude/skills/mcl-shared-platform-design/references)",
+      "Bash(ln -s ../mcl-common/references .claude/skills/mcl-product-design/references)",
+      "Bash(ln -s ../mcl-common/templates .claude/skills/mcl-foundation-design/templates)",
+      "Bash(ln -s ../mcl-common/schemas .claude/skills/mcl-foundation-design/schemas)",
+      "Bash(ln -s ../mcl-common/templates .claude/skills/mcl-shared-platform-design/templates)",
+      "Bash(ln -s ../mcl-common/schemas .claude/skills/mcl-shared-platform-design/schemas)",
+      "Bash(ln -s ../mcl-common/templates .claude/skills/mcl-product-design/templates)"
+    ]
+  }
+}
