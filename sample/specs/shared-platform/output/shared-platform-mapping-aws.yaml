@@ -1,0 +1,152 @@
+schema_version: "1.0"
+artifact_type: "vendor_mapping"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-mapping-aws"
+title: "共有プラットフォーム AWS ベンダーマッピング"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "Amazon EKS ベストプラクティス"
+  - "Amazon Managed Grafana ドキュメント"
+  - "Amazon Managed Prometheus ドキュメント"
+  - "AWS Secrets Manager ベストプラクティス"
+decision_refs:
+  - "shared-platform-decision-hybrid-runtime"
+  - "shared-platform-decision-gitops"
+inputs_ref:
+  - "shared-platform-canonical"
+
+vendor: "aws"
+canonical_ref: "shared-platform-canonical"
+
+mappings:
+  - canonical_element_id: "shared_platform.shared_runtime"
+    vendor_service: "Amazon EKS, AWS Lambda"
+    vendor_feature: "EKS Managed Node Groups, Karpenter, EKS Pod Identity, Lambda VPC"
+    fidelity: "exact"
+    configuration_notes: |
+      - EKS:
+        - Kubernetes バージョン: 1.30+（最新安定版）
+        - マネージドノードグループ + Karpenter
+        - EKS Pod Identity で Pod レベル IAM
+        - コントロールプレーンログ: API server, Audit, Authenticator → CloudWatch Logs
+        - 環境別クラスタ: 3 クラスタ（production, staging, development）
+        - クラスタアカウント: shared-services（Infrastructure OU）
+      - Lambda:
+        - VPC 内配置（shared-services VPC）
+        - PowerTools for Lambda（構造化ログ、トレース、メトリクス）
+    gap_description: ""
+    alternatives: []
+    source_refs:
+      - "Amazon EKS ベストプラクティス"
+
+  - canonical_element_id: "shared_platform.shared_observability"
+    vendor_service: "Amazon Managed Prometheus, Amazon Managed Grafana, CloudWatch, X-Ray"
+    vendor_feature: "AMP Workspace, AMG Workspace, CloudWatch Logs, X-Ray"
+    fidelity: "exact"
+    configuration_notes: |
+      - AMP:
+        - ワークスペース: 環境ごと or 共有（コストとのバランスで決定）
+        - メトリクス保持: 150 日
+        - 収集: ADOT Collector（EKS 内 DaemonSet）
+      - AMG:
+        - 認証: Entra ID SAML SSO
+        - データソース: AMP, CloudWatch, X-Ray
+        - 標準ダッシュボード: クラスタヘルス、テナントリソース、SLI/SLO
+      - CloudWatch Logs:
+        - EKS コンテナログ: Fluent Bit → CloudWatch Logs
+        - ログ保持: 90 日 → S3 エクスポート
+      - X-Ray:
+        - ADOT Collector で自動収集
+    gap_description: ""
+    alternatives:
+      - "Datadog（SaaS 型。より高機能だがコスト増）"
+    source_refs:
+      - "Amazon Managed Prometheus ドキュメント"
+      - "Amazon Managed Grafana ドキュメント"
+
+  - canonical_element_id: "shared_platform.shared_delivery_pipeline"
+    vendor_service: "GitHub Actions, ArgoCD"
+    vendor_feature: "Reusable Workflows, OIDC Federation, ArgoCD Application CRD"
+    fidelity: "exact"
+    configuration_notes: |
+      - GitHub Actions:
+        - Reusable Workflows: ビルド、テスト、スキャン、プッシュの共通テンプレート
+        - OIDC Federation: GitHub → AWS IAM Role（長期認証情報なし）
+        - セキュリティスキャン: Trivy（コンテナ）、Checkov（IaC）
+      - ArgoCD:
+        - EKS クラスタにデプロイ（本番/非本番で分離）
+        - AppProject: テナントごとに作成、デプロイ先 Namespace を制限
+        - Sync Policy: 開発=自動、ステージング=手動、本番=PR承認+手動
+        - ApplicationSet: テンプレートから自動生成
+    gap_description: ""
+    alternatives:
+      - "Flux（CNCF GitOps 代替）"
+    source_refs: []
+
+  - canonical_element_id: "shared_platform.shared_artifact_management"
+    vendor_service: "Amazon ECR"
+    vendor_feature: "ECR Private Repository, Enhanced Scanning, Cross-Account Access"
+    fidelity: "exact"
+    configuration_notes: |
+      - ECR:
+        - shared-services アカウントに集約
+        - リポジトリ命名: {tenant}/{app-name}
+        - ライフサイクルポリシー: 未タグイメージ 7 日、タグ付き 90 世代保持
+        - Enhanced Scanning: Inspector 統合で CVE 自動検出
+        - クロスアカウントポリシー: Workloads OU のアカウントからプル許可
+    gap_description: ""
+    alternatives: []
+    source_refs: []
+
+  - canonical_element_id: "shared_platform.shared_secret_management"
+    vendor_service: "AWS Secrets Manager, ACM"
+    vendor_feature: "Secrets Manager, External Secrets Operator, ACM Certificate"
+    fidelity: "exact"
+    configuration_notes: |
+      - Secrets Manager:
+        - テナント別プレフィックス: /{tenant}/{secret-name}
+        - KMS CMK 暗号化
+        - 自動ローテーション: RDS パスワード等に設定
+        - IAM ポリシーでテナント分離
+      - ESO:
+        - EKS クラスタにデプロイ
+        - ClusterSecretStore: Secrets Manager 接続
+        - ExternalSecret CRD: テナントが宣言的にシークレットを参照
+      - ACM:
+        - ワイルドカード証明書: *.{domain}
+        - ALB/NLB に自動適用
+        - 自動更新
+    gap_description: ""
+    alternatives:
+      - "HashiCorp Vault（より高度な機能だが運用負荷増）"
+    source_refs:
+      - "AWS Secrets Manager ベストプラクティス"
+
+  - canonical_element_id: "shared_platform.platform_ownership_model"
+    vendor_service: "AWS 運用プロセス"
+    vendor_feature: "SLA 定義、変更管理、ドキュメント"
+    fidelity: "partial"
+    configuration_notes: |
+      - SLA: 可用性 99.9%、インシデント応答 15 分以内
+      - 変更管理: CAB レビュー → ArgoCD Sync
+      - ドキュメント: GitHub Pages / Backstage（将来）
+    gap_description: "プラットフォーム所有モデルは技術的なサービスではなくプロセス。AWS サービスで直接実現するものではない"
+    alternatives: []
+    source_refs: []
+
+  - canonical_element_id: "shared_platform.onboarding_model"
+    vendor_service: "Kubernetes RBAC, ArgoCD"
+    vendor_feature: "Namespace, ResourceQuota, NetworkPolicy, ArgoCD AppProject"
+    fidelity: "exact"
+    configuration_notes: |
+      - テナントオンボーディングテンプレート:
+        - Namespace: {tenant}-{env}
+        - ResourceQuota: CPU/メモリ上限（テナントティアに応じて設定）
+        - LimitRange: Pod あたりの上限
+        - NetworkPolicy: デフォルト deny-all、テナント内通信のみ許可
+        - ArgoCD AppProject: テナント Namespace のみデプロイ可
+      - 申請フロー: Git リポジトリに PR → CCoE 承認 → 自動適用
+    gap_description: ""
+    alternatives: []
+    source_refs: []

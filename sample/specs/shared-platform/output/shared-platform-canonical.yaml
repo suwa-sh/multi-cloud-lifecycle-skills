@@ -1,0 +1,259 @@
+schema_version: "1.0"
+artifact_type: "canonical_model"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-canonical"
+title: "共有プラットフォームレイヤー Canonical Model"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "Amazon EKS ベストプラクティス"
+  - "Amazon Managed Grafana ドキュメント"
+  - "Amazon Managed Prometheus ドキュメント"
+  - "AWS Secrets Manager ベストプラクティス"
+decision_refs:
+  - "shared-platform-decision-hybrid-runtime"
+  - "shared-platform-decision-gitops"
+inputs_ref:
+  - "shared-platform-input"
+  - "foundation-context"
+
+elements:
+  # ====================================================================
+  # 1. shared_runtime — コンテナ + サーバーレスハイブリッド
+  # ====================================================================
+  - id: "shared_platform.shared_runtime"
+    name: "共有ランタイム"
+    category: "shared_runtime"
+    description: |
+      EKS（Kubernetes）をメインランタイム、Lambda をイベント駆動処理に使用するハイブリッド構成。
+      EKS クラスタは shared-services アカウントに配置し、テナントは Namespace で分離する。
+    requirements:
+      - id: "shared_platform.shared_runtime.req-01"
+        description: "環境ごとに EKS クラスタを配置する（本番/ステージング/開発）"
+        priority: "must"
+        rationale: "環境間の完全な分離。本番クラスタへの誤操作防止"
+      - id: "shared_platform.shared_runtime.req-02"
+        description: "EKS クラスタのコントロールプレーンログを CloudWatch Logs に送信する"
+        priority: "must"
+        rationale: "クラスタ操作の監査証跡。SOC2 要件"
+      - id: "shared_platform.shared_runtime.req-03"
+        description: "EKS マネージドノードグループを使用し、ノード管理を自動化する"
+        priority: "should"
+        rationale: "運用負荷の軽減。パッチ適用の自動化"
+      - id: "shared_platform.shared_runtime.req-04"
+        description: "Karpenter によるノードオートスケーリングを導入する"
+        priority: "should"
+        rationale: "コスト最適化と迅速なスケーリング"
+      - id: "shared_platform.shared_runtime.req-05"
+        description: "Lambda 関数は VPC 内に配置し、共有サービス VPC 経由でアクセスする"
+        priority: "should"
+        rationale: "ネットワークガードレールへの準拠"
+      - id: "shared_platform.shared_runtime.req-06"
+        description: "EKS Pod Identity を使用し、Pod レベルの IAM ロール割り当てを行う"
+        priority: "must"
+        rationale: "最小権限の原則。IRSA の後継として推奨"
+    constraints:
+      - "EKS クラスタは foundation の shared-services アカウントまたは専用アカウントに配置"
+      - "リージョンは ap-northeast-1（foundation のガードレールに準拠）"
+    dependencies: []
+    source_refs:
+      - "Amazon EKS ベストプラクティス"
+
+  # ====================================================================
+  # 2. shared_observability — メトリクス・ログ・トレース
+  # ====================================================================
+  - id: "shared_platform.shared_observability"
+    name: "統合オブザーバビリティ"
+    category: "shared_observability"
+    description: |
+      Amazon Managed Prometheus（AMP）でメトリクス収集、Amazon Managed Grafana（AMG）で可視化。
+      ログは CloudWatch Logs、分散トレースは AWS X-Ray で収集する。
+    requirements:
+      - id: "shared_platform.shared_observability.req-01"
+        description: "AMP ワークスペースを作成し、全 EKS クラスタからメトリクスを収集する"
+        priority: "must"
+        rationale: "統一的なメトリクス基盤。Prometheus 互換で移植性が高い"
+      - id: "shared_platform.shared_observability.req-02"
+        description: "AMG ワークスペースを作成し、Entra ID SSO で認証する"
+        priority: "must"
+        rationale: "統一ダッシュボード。ID 管理との統合"
+      - id: "shared_platform.shared_observability.req-03"
+        description: "標準ダッシュボード（クラスタヘルス、テナント別リソース使用量、SLI/SLO）を事前構築する"
+        priority: "must"
+        rationale: "プラットフォームチームとテナントの両方にインサイトを提供する"
+      - id: "shared_platform.shared_observability.req-04"
+        description: "アプリケーションログは構造化 JSON 形式で CloudWatch Logs に送信する"
+        priority: "must"
+        rationale: "ログの検索性と分析可能性を確保する"
+      - id: "shared_platform.shared_observability.req-05"
+        description: "AWS X-Ray による分散トレースを有効化し、サービス間の依存関係を可視化する"
+        priority: "should"
+        rationale: "マイクロサービス間の問題追跡を容易にする"
+      - id: "shared_platform.shared_observability.req-06"
+        description: "アラートルール（CPU/メモリ閾値、Pod 再起動、エラーレート）を標準テンプレートとして提供する"
+        priority: "must"
+        rationale: "テナントの監視立ち上げを加速する"
+    constraints:
+      - "メトリクス保持期間: AMP デフォルト 150 日"
+      - "ログ保持: CloudWatch Logs 90 日 → S3 アーカイブ"
+    dependencies:
+      - "shared_platform.shared_runtime"
+    source_refs:
+      - "Amazon Managed Prometheus ドキュメント"
+      - "Amazon Managed Grafana ドキュメント"
+
+  # ====================================================================
+  # 3. shared_delivery_pipeline — CI/CD + GitOps
+  # ====================================================================
+  - id: "shared_platform.shared_delivery_pipeline"
+    name: "デリバリーパイプライン"
+    category: "shared_delivery_pipeline"
+    description: |
+      GitHub Actions で CI（ビルド・テスト・イメージプッシュ）、ArgoCD で CD（GitOps ベースデプロイ）。
+      環境プロモーション（dev → staging → production）は Git ブランチ/PR ベースで管理する。
+    requirements:
+      - id: "shared_platform.shared_delivery_pipeline.req-01"
+        description: "GitHub Actions の共通ワークフローテンプレート（Reusable Workflows）を提供する"
+        priority: "must"
+        rationale: "テナント間の CI 品質を標準化し、セキュリティスキャンを必須化する"
+      - id: "shared_platform.shared_delivery_pipeline.req-02"
+        description: "ArgoCD を EKS クラスタにデプロイし、Application CRD でテナントアプリを管理する"
+        priority: "must"
+        rationale: "GitOps による宣言的デプロイ。変更の追跡と自動ドリフト検知"
+      - id: "shared_platform.shared_delivery_pipeline.req-03"
+        description: "GitHub Actions → AWS 認証は OIDC Federation を使用し、長期認証情報を排除する"
+        priority: "must"
+        rationale: "シークレット漏洩リスクの排除。AWS ベストプラクティス"
+      - id: "shared_platform.shared_delivery_pipeline.req-04"
+        description: "本番デプロイは PR 承認 + ArgoCD Sync による 2 段階承認とする"
+        priority: "must"
+        rationale: "意図しない本番変更の防止。SOC2 変更管理要件"
+      - id: "shared_platform.shared_delivery_pipeline.req-05"
+        description: "CI パイプラインにコンテナイメージスキャン（Trivy 等）を必須化する"
+        priority: "must"
+        rationale: "脆弱性のあるイメージのデプロイを防止する"
+    constraints:
+      - "GitHub Organization は全社で統一"
+      - "ArgoCD は EKS クラスタごとにデプロイ（本番/非本番で分離）"
+    dependencies:
+      - "shared_platform.shared_runtime"
+      - "shared_platform.shared_artifact_management"
+    source_refs: []
+
+  # ====================================================================
+  # 4. shared_artifact_management — コンテナレジストリ
+  # ====================================================================
+  - id: "shared_platform.shared_artifact_management"
+    name: "アーティファクト管理"
+    category: "shared_artifact_management"
+    description: |
+      ECR をコンテナイメージレジストリとして使用。イメージスキャンを有効化し、
+      脆弱性のあるイメージのプルを防止する。
+    requirements:
+      - id: "shared_platform.shared_artifact_management.req-01"
+        description: "ECR リポジトリをテナントごとに作成し、ライフサイクルポリシーで古いイメージを自動削除する"
+        priority: "must"
+        rationale: "ストレージコスト管理とイメージの世代管理"
+      - id: "shared_platform.shared_artifact_management.req-02"
+        description: "ECR イメージスキャン（Enhanced Scanning with Inspector）を有効化する"
+        priority: "must"
+        rationale: "CVE 検出の自動化。CI パイプラインと統合"
+      - id: "shared_platform.shared_artifact_management.req-03"
+        description: "ECR のクロスアカウントアクセスを設定し、ワークロードアカウントからプル可能にする"
+        priority: "must"
+        rationale: "マルチアカウント環境でのイメージ配布"
+    constraints:
+      - "ECR リポジトリは shared-services アカウントに集約"
+    dependencies: []
+    source_refs: []
+
+  # ====================================================================
+  # 5. shared_secret_management — シークレット + 証明書
+  # ====================================================================
+  - id: "shared_platform.shared_secret_management"
+    name: "シークレット管理"
+    category: "shared_secret_management"
+    description: |
+      AWS Secrets Manager に秘密情報を格納し、External Secrets Operator（ESO）で
+      K8s Secret に自動同期する。証明書は ACM で管理する。
+    requirements:
+      - id: "shared_platform.shared_secret_management.req-01"
+        description: "Secrets Manager のシークレットを ESO で K8s Secret に自動同期する"
+        priority: "must"
+        rationale: "K8s マニフェストにシークレットを含めない。GitOps との整合性"
+      - id: "shared_platform.shared_secret_management.req-02"
+        description: "シークレットの自動ローテーションを設定する（DB パスワード等）"
+        priority: "should"
+        rationale: "認証情報の定期更新によるリスク軽減"
+      - id: "shared_platform.shared_secret_management.req-03"
+        description: "ACM で TLS 証明書を管理し、ALB/NLB に自動適用する"
+        priority: "must"
+        rationale: "証明書の手動管理を排除し、更新忘れを防止する"
+    constraints:
+      - "シークレットは KMS CMK で暗号化"
+      - "テナントは自テナントのシークレットのみアクセス可能（IAM ポリシーで分離）"
+    dependencies:
+      - "shared_platform.shared_runtime"
+    source_refs:
+      - "AWS Secrets Manager ベストプラクティス"
+
+  # ====================================================================
+  # 6. platform_ownership_model — チーム構成と責務
+  # ====================================================================
+  - id: "shared_platform.platform_ownership_model"
+    name: "プラットフォーム所有モデル"
+    category: "platform_ownership_model"
+    description: |
+      CCoE がプラットフォームを所有・運用し、テナントチーム（BU 開発チーム）に
+      セルフサービスでリソースを提供する。
+    requirements:
+      - id: "shared_platform.platform_ownership_model.req-01"
+        description: "CCoE がプラットフォームの SLA（可用性 99.9%、インシデント応答 15 分以内）を定義する"
+        priority: "must"
+        rationale: "テナントとの期待値合意。責任境界の明確化"
+      - id: "shared_platform.platform_ownership_model.req-02"
+        description: "プラットフォーム変更は変更管理プロセス（CAB レビュー）を経由する"
+        priority: "must"
+        rationale: "SOC2 変更管理要件。プラットフォーム安定性の維持"
+      - id: "shared_platform.platform_ownership_model.req-03"
+        description: "テナント向けドキュメント（利用ガイド、API リファレンス、トラブルシューティング）を整備する"
+        priority: "should"
+        rationale: "セルフサービス化の推進。CCoE への問い合わせ削減"
+    constraints:
+      - "プラットフォーム運用は CCoE が担当"
+    dependencies: []
+    source_refs: []
+
+  # ====================================================================
+  # 7. onboarding_model — テナントオンボーディング
+  # ====================================================================
+  - id: "shared_platform.onboarding_model"
+    name: "テナントオンボーディング"
+    category: "onboarding_model"
+    description: |
+      新規テナント（BU/チーム）のオンボーディングを標準化・自動化する。
+      Namespace、RBAC、リソースクォータ、ネットワークポリシー、ArgoCD Project を
+      テンプレートから自動生成する。
+    requirements:
+      - id: "shared_platform.onboarding_model.req-01"
+        description: "テナントオンボーディングをコード化し、PR ベースで申請・承認する"
+        priority: "must"
+        rationale: "手動作業の排除。変更の追跡可能性"
+      - id: "shared_platform.onboarding_model.req-02"
+        description: "テナントごとに Namespace、ResourceQuota、LimitRange、NetworkPolicy を自動作成する"
+        priority: "must"
+        rationale: "テナント間の公平なリソース配分と分離"
+      - id: "shared_platform.onboarding_model.req-03"
+        description: "テナントごとに ArgoCD AppProject を作成し、デプロイ先 Namespace を制限する"
+        priority: "must"
+        rationale: "テナントが他テナントの Namespace にデプロイすることを防止する"
+      - id: "shared_platform.onboarding_model.req-04"
+        description: "テナントオンボーディングのリードタイムを 1 営業日以内にする"
+        priority: "should"
+        rationale: "開発速度への貢献。セルフサービスに近い体験"
+    constraints:
+      - "オンボーディングテンプレートは Git リポジトリで管理"
+    dependencies:
+      - "shared_platform.shared_runtime"
+      - "shared_platform.shared_delivery_pipeline"
+    source_refs: []

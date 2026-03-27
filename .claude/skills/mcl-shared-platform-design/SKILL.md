@@ -205,6 +205,13 @@ shared platform の canonical model と foundation context の両方に対して
 
 ### Step 12: ターゲットアーキテクチャ Markdown の生成
 
+共有プラットフォーム設計を要約した可読性の高いアーキテクチャドキュメントを生成する。図解には Mermaid 記法を使用すること（`../mcl-common/SKILL.md` の図解ポリシー参照）。以下の図を含める:
+
+- **プラットフォーム全体構成図**: `graph TD` で共有サービス間の依存関係とテナント分離をサブグラフで表現
+- **CI/CD パイプラインフロー図**: `graph LR` でソースコードからデプロイまでの流れを表現
+- **オブザーバビリティスタック図**: `graph TD` でメトリクス・ログ・トレースの収集経路を表現
+- **クラウド別デプロイメント図**: `graph TD` で AWS / Azure をサブグラフに分け、各サービスのマッピングを表現
+
 保存先: `docs/cloud-context/generated-md/shared-platform/`
 
 ## 出力一覧

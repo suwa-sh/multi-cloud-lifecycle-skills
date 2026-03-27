@@ -1,0 +1,46 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-decision-hybrid-runtime"
+title: "共有ランタイムを EKS + Lambda ハイブリッド構成にする"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "Amazon EKS ベストプラクティス"
+inputs_ref:
+  - "shared-platform-input"
+
+decision:
+  context: |
+    共有ランタイムの選定にあたり、全ワークロードを単一のランタイムで統一するか、
+    ワークロード特性に応じてハイブリッド構成にするかを決定する必要がある。
+  conflict_type: "capability"
+  options:
+    - id: "eks-only"
+      description: "EKS のみ"
+      pros:
+        - "運用対象が単一で管理が容易"
+        - "全ワークロードが統一的なデプロイモデル"
+      cons:
+        - "イベント駆動処理に EKS は過剰"
+        - "コールドスタートのないスケーリングが必要な場合にコスト増"
+    - id: "hybrid-eks-lambda"
+      description: "EKS + Lambda ハイブリッド"
+      pros:
+        - "ワークロード特性に最適なランタイムを選択可能"
+        - "イベント駆動処理のコスト最適化"
+        - "Lambda の自動スケーリングで運用負荷を軽減"
+      cons:
+        - "2 つのランタイムの運用が必要"
+        - "監視・デプロイの統一に追加の考慮が必要"
+  chosen_option: "hybrid-eks-lambda"
+  rationale: |
+    常駐型のマイクロサービスは EKS、イベント駆動型の処理（S3 トリガー、SQS トリガー、
+    スケジュール実行等）は Lambda が最適。ハイブリッド構成により、各ワークロードに
+    適切なランタイムを提供しつつ、コストを最適化する。
+  risk_assessment: |
+    リスク: 2 つのランタイムの監視・運用の複雑性
+    緩和策: AMP/AMG で統合監視、GitHub Actions で CI を統一
+  affected_elements:
+    - "shared_platform.shared_runtime"
+  review_date: "2027-03-28"

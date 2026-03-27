@@ -1,0 +1,124 @@
+schema_version: "1.0"
+artifact_type: "service_catalog"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-service-catalog"
+title: "共有プラットフォーム サービスカタログ"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs: []
+decision_refs: []
+inputs_ref:
+  - "shared-platform-input"
+  - "foundation-context"
+
+services:
+  # ====================================================================
+  # 必須サービス（Mandatory）
+  # ====================================================================
+  - id: "svc-eks-runtime"
+    name: "EKS 共有ランタイム"
+    category: "shared_runtime"
+    mandatory: true
+    description: "環境別 EKS クラスタ（本番/ステージング/開発）。マネージドノードグループ + Karpenter"
+    delivery_model: "self_service"
+    dependencies: []
+    included_features:
+      - "Namespace 分離（テナントごと）"
+      - "ResourceQuota / LimitRange"
+      - "NetworkPolicy（デフォルト deny-all + テナント許可）"
+      - "EKS Pod Identity"
+      - "Karpenter オートスケーリング"
+    sla:
+      availability: "99.9%"
+      incident_response: "15 分以内"
+
+  - id: "svc-lambda-runtime"
+    name: "Lambda サーバーレスランタイム"
+    category: "shared_runtime"
+    mandatory: true
+    description: "イベント駆動処理向けの Lambda 実行環境。VPC 内配置"
+    delivery_model: "self_service"
+    dependencies: []
+    included_features:
+      - "VPC Lambda（共有サービス VPC 内）"
+      - "Lambda Layers（共通ライブラリ）"
+      - "Lambda Power Tuning（推奨構成）"
+
+  - id: "svc-observability"
+    name: "統合オブザーバビリティ"
+    category: "shared_observability"
+    mandatory: true
+    description: "AMP + AMG + CloudWatch Logs + X-Ray による統合監視"
+    delivery_model: "self_service"
+    dependencies:
+      - "svc-eks-runtime"
+    included_features:
+      - "AMP（メトリクス収集、150 日保持）"
+      - "AMG（ダッシュボード、Entra ID SSO）"
+      - "標準ダッシュボードテンプレート"
+      - "標準アラートルールテンプレート"
+      - "CloudWatch Logs（構造化ログ、90 日保持）"
+      - "X-Ray（分散トレース）"
+    sla:
+      availability: "99.9%"
+
+  - id: "svc-delivery-pipeline"
+    name: "CI/CD パイプライン"
+    category: "shared_delivery_pipeline"
+    mandatory: true
+    description: "GitHub Actions（CI）+ ArgoCD（CD/GitOps）"
+    delivery_model: "self_service"
+    dependencies:
+      - "svc-eks-runtime"
+      - "svc-artifact-registry"
+    included_features:
+      - "GitHub Actions Reusable Workflows"
+      - "OIDC Federation（GitHub → AWS）"
+      - "ArgoCD AppProject（テナント分離）"
+      - "コンテナイメージスキャン（Trivy）"
+      - "環境プロモーション（dev → staging → production）"
+      - "本番デプロイ 2 段階承認"
+
+  # ====================================================================
+  # 任意サービス（Optional）
+  # ====================================================================
+  - id: "svc-artifact-registry"
+    name: "アーティファクトレジストリ"
+    category: "shared_artifact_management"
+    mandatory: false
+    description: "ECR コンテナイメージレジストリ。イメージスキャン付き"
+    delivery_model: "self_service"
+    dependencies: []
+    included_features:
+      - "テナント別 ECR リポジトリ"
+      - "ライフサイクルポリシー（自動クリーンアップ）"
+      - "Enhanced Scanning（Inspector 統合）"
+      - "クロスアカウントプルアクセス"
+
+  - id: "svc-secret-management"
+    name: "シークレット管理"
+    category: "shared_secret_management"
+    mandatory: false
+    description: "Secrets Manager + ESO。K8s Secret への自動同期"
+    delivery_model: "self_service"
+    dependencies:
+      - "svc-eks-runtime"
+    included_features:
+      - "ESO による K8s Secret 自動同期"
+      - "シークレット自動ローテーション"
+      - "ACM 証明書管理"
+      - "テナント分離（IAM ポリシー）"
+
+  - id: "svc-tenant-onboarding"
+    name: "テナントオンボーディング"
+    category: "onboarding_model"
+    mandatory: false
+    description: "PR ベースのテナント登録。Namespace、RBAC、ArgoCD Project を自動生成"
+    delivery_model: "request_based"
+    dependencies:
+      - "svc-eks-runtime"
+      - "svc-delivery-pipeline"
+    included_features:
+      - "テナントテンプレート（Namespace + RBAC + ResourceQuota + NetworkPolicy）"
+      - "ArgoCD AppProject 自動作成"
+      - "リードタイム 1 営業日以内"

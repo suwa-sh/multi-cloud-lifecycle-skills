@@ -1,0 +1,44 @@
+schema_version: "1.0"
+artifact_type: "context"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-input"
+title: "共有プラットフォーム設計 入力要件"
+status: "approved"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs: []
+decision_refs: []
+inputs_ref:
+  - "foundation-context"
+
+target_cloud: "aws"
+
+shared_runtime:
+  primary: "eks"
+  secondary: "lambda"
+  model: "hybrid"
+  description: "EKS をメインランタイム、Lambda をイベント駆動処理に使用するハイブリッド構成"
+
+ci_cd:
+  pipeline: "github-actions"
+  deploy: "argocd"
+  strategy: "gitops"
+  description: "GitHub Actions で CI、ArgoCD で GitOps ベースの CD"
+
+observability:
+  metrics: "amazon-managed-prometheus"
+  visualization: "amazon-managed-grafana"
+  stack: "prometheus-grafana-managed"
+  description: "AMP + AMG によるマネージド Prometheus/Grafana スタック"
+
+secret_management:
+  store: "aws-secrets-manager"
+  k8s_integration: "external-secrets-operator"
+  description: "Secrets Manager + ESO で K8s シークレットを自動同期"
+
+tenant_model:
+  isolation: "namespace"
+  description: "1 EKS クラスタ内で BU/チームごとに Namespace 分離"
+
+service_policy:
+  mandatory: ["shared_runtime", "shared_observability", "shared_delivery_pipeline"]
+  optional: ["shared_artifact_management", "shared_secret_management"]

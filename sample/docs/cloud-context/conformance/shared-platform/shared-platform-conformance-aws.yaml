@@ -1,0 +1,230 @@
+# 共有プラットフォーム適合性レポート - AWS
+# 正規モデルに対する AWS 実装の適合性を評価する
+
+schema_version: "1.0"
+artifact_type: "conformance_report"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-conformance-aws"
+title: "共有プラットフォーム適合性レポート (AWS)"
+status: "draft"
+generated_at: "2026-03-28T00:00:00Z"
+source_refs:
+  - "docs/cloud-context/sources/aws/eks-best-practices.md"
+  - "docs/cloud-context/sources/aws/observability-guide.md"
+inputs_ref:
+  - "specs/foundation/output/foundation-context.yaml"
+
+vendor: "aws"
+canonical_ref: "specs/shared-platform/output/shared-platform-canonical.yaml"
+implementation_ref: "specs/shared-platform/output/shared-platform-impl-aws.yaml"
+
+summary:
+  total_requirements: 28
+  conformant: 25
+  partial: 3
+  non_conformant: 0
+  deferred: 0
+
+results:
+  # ========== shared-runtime ==========
+  - canonical_element_id: "shared-runtime"
+    requirement_id: "sr-01"
+    status: "conformant"
+    evidence: "EKS 1.30+ を採用し、環境ごとに 3 クラスタを構成。マネージドノードグループと Karpenter によるオートスケーリングを実装。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "shared-runtime"
+    requirement_id: "sr-02"
+    status: "conformant"
+    evidence: "EKS Pod Identity を採用し、サービスアカウントと IAM ロールの紐付けを実現。IRSA からの移行完了。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "shared-runtime"
+    requirement_id: "sr-03"
+    status: "conformant"
+    evidence: "コントロールプレーンログ全 5 タイプ（api, audit, authenticator, controllerManager, scheduler）を有効化。保持期間 90 日。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "shared-runtime"
+    requirement_id: "sr-04"
+    status: "conformant"
+    evidence: "Lambda VPC 配置を必須とし、プライベートサブネットにデプロイ。共有レイヤーで共通ライブラリとオブザーバビリティを提供。"
+    notes: ""
+    deviation_ref: ""
+
+  # ========== observability ==========
+  - canonical_element_id: "observability"
+    requirement_id: "obs-01"
+    status: "conformant"
+    evidence: "AMP ワークスペースを作成し、ADOT Collector 経由で Prometheus メトリクスを収集。保持期間 150 日。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "observability"
+    requirement_id: "obs-02"
+    status: "conformant"
+    evidence: "AMG ワークスペースに Entra ID SAML 認証を構成。管理者・編集者ロールを SAML 属性で分離。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "observability"
+    requirement_id: "obs-03"
+    status: "conformant"
+    evidence: "ADOT Collector を DaemonSet としてデプロイ。メトリクス・トレース・ログの 3 パイプラインを構成。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "observability"
+    requirement_id: "obs-04"
+    status: "conformant"
+    evidence: "Fluent Bit を DaemonSet でデプロイし、CloudWatch Logs へログを転送。ログ保持期間 90 日。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "observability"
+    requirement_id: "obs-05"
+    status: "conformant"
+    evidence: "X-Ray をトレースバックエンドとして構成。ADOT Collector 経由で OTLP トレースを変換・転送。"
+    notes: ""
+    deviation_ref: ""
+
+  # ========== cicd-delivery ==========
+  - canonical_element_id: "cicd-delivery"
+    requirement_id: "cicd-01"
+    status: "conformant"
+    evidence: "ArgoCD を EKS 上に HA モードでデプロイ。Helm チャートで管理し、自動 Prune と Self-Heal を有効化。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "cicd-delivery"
+    requirement_id: "cicd-02"
+    status: "conformant"
+    evidence: "テナントごとに ArgoCD AppProject を作成し、ソースリポジトリとデプロイ先 Namespace を分離。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "cicd-delivery"
+    requirement_id: "cicd-03"
+    status: "conformant"
+    evidence: "GitHub Actions OIDC プロバイダーを IAM に登録。CI/CD ロールを Org/Repo/Branch で信頼ポリシーを制限。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "cicd-delivery"
+    requirement_id: "cicd-04"
+    status: "conformant"
+    evidence: "ビルド・デプロイ・Terraform の 3 つの再利用ワークフローテンプレートを提供。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "cicd-delivery"
+    requirement_id: "cicd-05"
+    status: "partial"
+    evidence: "ArgoCD の同期ポリシーで自動デプロイを実現しているが、承認フローの仕組みは未実装。"
+    notes: "本番環境への承認フローは今後 ArgoCD ApplicationSet の Progressive Sync で実装予定。"
+    deviation_ref: ""
+
+  # ========== artifact-management ==========
+  - canonical_element_id: "artifact-management"
+    requirement_id: "am-01"
+    status: "conformant"
+    evidence: "ECR リポジトリをチーム/サービス命名規約で作成。イメージタグを IMMUTABLE に設定。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "artifact-management"
+    requirement_id: "am-02"
+    status: "conformant"
+    evidence: "ライフサイクルポリシーで未タグイメージ 7 日削除、タグ付きイメージ 100 世代保持を設定。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "artifact-management"
+    requirement_id: "am-03"
+    status: "conformant"
+    evidence: "拡張スキャン（Inspector 連携）を有効化。プッシュ時スキャンと継続スキャンの両方を設定。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "artifact-management"
+    requirement_id: "am-04"
+    status: "conformant"
+    evidence: "クロスアカウントアクセスポリシーを設定し、本番アカウントからのイメージ Pull を許可。"
+    notes: ""
+    deviation_ref: ""
+
+  # ========== secret-management ==========
+  - canonical_element_id: "secret-management"
+    requirement_id: "sm-01"
+    status: "conformant"
+    evidence: "Secrets Manager でプレフィックスパターン /{env}/{team}/{service}/{key} を採用。KMS 暗号化を適用。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "secret-management"
+    requirement_id: "sm-02"
+    status: "conformant"
+    evidence: "ESO を EKS にデプロイし、ClusterSecretStore で Secrets Manager を参照。Pod Identity で認証。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "secret-management"
+    requirement_id: "sm-03"
+    status: "conformant"
+    evidence: "ACM で内部ドメインとプラットフォームドメインのワイルドカード証明書を発行。DNS 検証で自動更新を有効化。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "secret-management"
+    requirement_id: "sm-04"
+    status: "partial"
+    evidence: "シークレットローテーション 90 日を設定しているが、全サービスのローテーション Lambda は未実装。"
+    notes: "データベース認証情報のローテーション Lambda を個別に実装する必要がある。"
+    deviation_ref: ""
+
+  # ========== tenant-onboarding ==========
+  - canonical_element_id: "tenant-onboarding"
+    requirement_id: "to-01"
+    status: "conformant"
+    evidence: "Namespace テンプレートを定義し、ラベル・アノテーションによるテナント識別を実装。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "tenant-onboarding"
+    requirement_id: "to-02"
+    status: "conformant"
+    evidence: "ResourceQuota でテナントの CPU/メモリ/PVC/LB を制限。LimitRange でコンテナのデフォルト値を設定。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "tenant-onboarding"
+    requirement_id: "to-03"
+    status: "conformant"
+    evidence: "デフォルト拒否の NetworkPolicy を適用。同一 Namespace 内通信と Ingress コントローラからの通信を許可。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "tenant-onboarding"
+    requirement_id: "to-04"
+    status: "conformant"
+    evidence: "tenant-admin / tenant-developer / tenant-viewer の 3 ロールを定義し、最小権限の原則を適用。"
+    notes: ""
+    deviation_ref: ""
+
+  # ========== platform-ownership ==========
+  - canonical_element_id: "platform-ownership"
+    requirement_id: "po-01"
+    status: "conformant"
+    evidence: "プラットフォームチーム専用の ArgoCD AppProject を作成し、クラスタ管理リソースへのアクセスを制限。"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "platform-ownership"
+    requirement_id: "po-02"
+    status: "partial"
+    evidence: "IaC モジュールでプラットフォームリソースを管理しているが、プラットフォームカタログの自動生成は未実装。"
+    notes: "Backstage 等のサービスカタログ統合は次フェーズで検討。"
+    deviation_ref: ""

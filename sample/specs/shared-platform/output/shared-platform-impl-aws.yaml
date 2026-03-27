@@ -1,0 +1,507 @@
+# 共有プラットフォーム実装仕様 - AWS
+# AWS 上の共有プラットフォームレイヤーの実装仕様を定義する
+
+schema_version: "1.0"
+artifact_type: "implementation_spec"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-impl-aws"
+title: "共有プラットフォーム実装仕様 (AWS)"
+status: "draft"
+generated_at: "2026-03-28T00:00:00Z"
+source_refs:
+  - "docs/cloud-context/sources/aws/eks-best-practices.md"
+  - "docs/cloud-context/sources/aws/observability-guide.md"
+  - "docs/cloud-context/sources/aws/lambda-best-practices.md"
+decision_refs:
+  - "docs/cloud-context/decisions/shared-platform/sp-dr-001-eks-cluster-strategy.yaml"
+  - "docs/cloud-context/decisions/shared-platform/sp-dr-002-observability-stack.yaml"
+  - "docs/cloud-context/decisions/shared-platform/sp-dr-003-cicd-pipeline.yaml"
+inputs_ref:
+  - "specs/foundation/output/foundation-context.yaml"
+
+vendor: "aws"
+canonical_ref: "specs/shared-platform/output/shared-platform-canonical.yaml"
+mapping_ref: "specs/shared-platform/output/shared-platform-mapping-aws.yaml"
+
+components:
+  # ---------- EKS クラスタ ----------
+  - id: "aws-eks"
+    name: "EKS クラスタ"
+    canonical_element_id: "shared-runtime"
+    vendor_service: "Amazon EKS"
+    configuration:
+      cluster_version: "1.30"  # TODO: 最新の安定バージョンに更新すること
+      cluster_count_per_env: 3
+      environments:
+        - name: "dev"
+          cluster_suffix: "dev"
+        - name: "stg"
+          cluster_suffix: "stg"
+        - name: "prd"
+          cluster_suffix: "prd"
+      managed_node_groups:
+        default:
+          instance_types: ["m7i.xlarge"]  # TODO: ワークロード要件に応じて調整
+          min_size: 2
+          max_size: 10
+          desired_size: 3
+          disk_size_gb: 100
+          ami_type: "AL2023_x86_64_STANDARD"
+      karpenter:
+        enabled: true
+        version: "0.37.0"  # TODO: 最新バージョンに更新
+        provisioner:
+          instance_families: ["m7i", "m7a", "c7i", "r7i"]
+          capacity_type: ["on-demand", "spot"]
+          zones: ["ap-northeast-1a", "ap-northeast-1c", "ap-northeast-1d"]
+          ttl_seconds_after_empty: 30
+          ttl_seconds_until_expired: 2592000
+      pod_identity:
+        enabled: true
+        service_accounts:
+          - namespace: "kube-system"
+            name: "aws-load-balancer-controller"
+          - namespace: "kube-system"
+            name: "ebs-csi-controller-sa"
+          - namespace: "monitoring"
+            name: "adot-collector"
+          - namespace: "argocd"
+            name: "argocd-server"
+      control_plane_logging:
+        enabled_log_types:
+          - "api"
+          - "audit"
+          - "authenticator"
+          - "controllerManager"
+          - "scheduler"
+        retention_days: 90
+      addons:
+        - name: "vpc-cni"
+          version: "latest"  # TODO: 固定バージョンに変更
+        - name: "coredns"
+          version: "latest"  # TODO: 固定バージョンに変更
+        - name: "kube-proxy"
+          version: "latest"  # TODO: 固定バージョンに変更
+        - name: "aws-ebs-csi-driver"
+          version: "latest"  # TODO: 固定バージョンに変更
+        - name: "eks-pod-identity-agent"
+          version: "latest"  # TODO: 固定バージョンに変更
+    dependencies: []
+    iac_module: "infra/shared-platform/aws/modules/eks"
+    validation_rules:
+      - rule: "EKS バージョンが 1.30 以上であること"
+        type: "static"
+        description: "Kubernetes バージョンの最低要件を満たしているか確認"
+      - rule: "コントロールプレーンログが全タイプ有効であること"
+        type: "static"
+        description: "監査要件に基づく全ログタイプの有効化確認"
+      - rule: "Pod Identity が有効であること"
+        type: "runtime"
+        description: "IRSA ではなく Pod Identity を使用していることの確認"
+
+  # ---------- Lambda プラットフォーム ----------
+  - id: "aws-lambda-platform"
+    name: "Lambda プラットフォーム"
+    canonical_element_id: "shared-runtime"
+    vendor_service: "AWS Lambda"
+    configuration:
+      vpc_config:
+        enabled: true
+        subnet_type: "private"
+        security_group_rules:
+          egress:
+            - protocol: "tcp"
+              port: 443
+              destination: "0.0.0.0/0"
+              description: "HTTPS アウトバウンド"
+            - protocol: "tcp"
+              port: 5432
+              destination: "rds-sg"  # TODO: RDS セキュリティグループ ID に変更
+              description: "PostgreSQL 接続"
+      shared_layers:
+        - name: "common-deps"
+          description: "共通ライブラリレイヤー（AWS SDK, ロギング, トレーシング）"
+          compatible_runtimes: ["python3.12", "nodejs20.x"]
+          retention_versions: 5
+        - name: "observability"
+          description: "ADOT Lambda レイヤー"
+          compatible_runtimes: ["python3.12", "nodejs20.x"]
+      runtime_defaults:
+        timeout_seconds: 30  # TODO: ワークロードに応じて調整
+        memory_mb: 256  # TODO: ワークロードに応じて調整
+        reserved_concurrency: null  # TODO: 必要に応じて設定
+        environment_variables:
+          LOG_LEVEL: "INFO"
+          POWERTOOLS_SERVICE_NAME: "shared-platform"
+    dependencies:
+      - "aws-observability"
+      - "aws-secrets"
+    iac_module: "infra/shared-platform/aws/modules/lambda-platform"
+    validation_rules:
+      - rule: "Lambda 関数が VPC 内にデプロイされていること"
+        type: "runtime"
+        description: "セキュリティ要件に基づく VPC 配置確認"
+      - rule: "共有レイヤーが最新バージョンを参照していること"
+        type: "static"
+        description: "レイヤーバージョンの最新性確認"
+
+  # ---------- オブザーバビリティ ----------
+  - id: "aws-observability"
+    name: "オブザーバビリティスタック"
+    canonical_element_id: "observability"
+    vendor_service: "AMP / AMG / CloudWatch / X-Ray"
+    configuration:
+      prometheus:
+        workspace_alias: "shared-platform-metrics"  # TODO: 環境に応じてサフィックスを追加
+        retention_days: 150
+      grafana:
+        workspace_name: "shared-platform-grafana"  # TODO: 環境に応じてサフィックスを追加
+        authentication: "SAML"
+        saml_provider: "Entra ID"
+        saml_configuration:
+          idp_metadata_url: ""  # TODO: Entra ID の SAML メタデータ URL を設定
+          login_validity_duration: 480
+          admin_role_values: ["platform-admin"]
+          editor_role_values: ["platform-editor"]
+        data_sources:
+          - type: "prometheus"
+            target: "amp-workspace"
+          - type: "cloudwatch"
+            target: "ap-northeast-1"
+          - type: "x-ray"
+            target: "ap-northeast-1"
+      adot_collector:
+        deploy_mode: "daemonset"
+        image_tag: "latest"  # TODO: 固定バージョンに変更
+        receivers:
+          - "otlp"
+          - "prometheus"
+          - "awsxray"
+        exporters:
+          - "awsprometheusremotewrite"
+          - "awsxray"
+          - "awscloudwatchlogs"
+        pipelines:
+          metrics:
+            receivers: ["otlp", "prometheus"]
+            exporters: ["awsprometheusremotewrite"]
+          traces:
+            receivers: ["otlp"]
+            exporters: ["awsxray"]
+          logs:
+            receivers: ["otlp"]
+            exporters: ["awscloudwatchlogs"]
+      cloudwatch_logs:
+        log_agent: "fluent-bit"
+        fluent_bit:
+          deploy_mode: "daemonset"
+          log_group_prefix: "/shared-platform/"
+          retention_days: 90
+          output_plugin: "cloudwatch_logs"
+      xray:
+        sampling_rate: 0.05  # TODO: トラフィック量に応じて調整
+        daemon_mode: "sidecar"
+    dependencies:
+      - "aws-eks"
+    iac_module: "infra/shared-platform/aws/modules/observability"
+    validation_rules:
+      - rule: "AMP ワークスペースが作成され、リモートライト可能であること"
+        type: "runtime"
+        description: "Prometheus メトリクス収集の疎通確認"
+      - rule: "AMG が Entra ID SSO で認証可能であること"
+        type: "runtime"
+        description: "Grafana への SSO ログイン確認"
+      - rule: "ADOT Collector が全ノードで稼働していること"
+        type: "runtime"
+        description: "DaemonSet の Pod 数がノード数と一致するか確認"
+
+  # ---------- ArgoCD ----------
+  - id: "aws-argocd"
+    name: "ArgoCD デプロイメント"
+    canonical_element_id: "cicd-delivery"
+    vendor_service: "ArgoCD on EKS"
+    configuration:
+      namespace: "argocd"
+      helm_chart:
+        repository: "https://argoproj.github.io/argo-helm"
+        chart: "argo-cd"
+        version: "7.3.0"  # TODO: 最新安定バージョンに更新
+      ha_mode: true
+      server:
+        replicas: 2
+        ingress:
+          enabled: true
+          class: "alb"
+          annotations:
+            alb.ingress.kubernetes.io/scheme: "internal"
+            alb.ingress.kubernetes.io/target-type: "ip"
+            alb.ingress.kubernetes.io/certificate-arn: ""  # TODO: ACM 証明書 ARN を設定
+      app_projects:
+        - name: "platform"
+          description: "プラットフォームチーム用プロジェクト"
+          source_repos: ["https://github.com/ORG/platform-manifests"]  # TODO: リポジトリ URL を設定
+          destinations:
+            - server: "https://kubernetes.default.svc"
+              namespace: "kube-system,monitoring,argocd"
+        - name: "tenant-template"
+          description: "テナント用 AppProject テンプレート"
+          source_repos: []  # TODO: テナントのリポジトリ URL を設定
+          destinations:
+            - server: "https://kubernetes.default.svc"
+              namespace: ""  # TODO: テナント Namespace を設定
+      sync_policy:
+        automated:
+          prune: true
+          self_heal: true
+        sync_options:
+          - "CreateNamespace=true"
+          - "PruneLast=true"
+          - "ApplyOutOfSyncOnly=true"
+        retry:
+          limit: 5
+          backoff:
+            duration: "5s"
+            factor: 2
+            max_duration: "3m"
+    dependencies:
+      - "aws-eks"
+    iac_module: "infra/shared-platform/aws/modules/argocd"
+    validation_rules:
+      - rule: "ArgoCD サーバーが HA モードで稼働していること"
+        type: "runtime"
+        description: "ArgoCD の可用性確認"
+      - rule: "AppProject がテナントごとに分離されていること"
+        type: "static"
+        description: "マルチテナント分離の設定確認"
+
+  # ---------- GitHub Actions ----------
+  - id: "aws-github-actions"
+    name: "GitHub Actions CI/CD"
+    canonical_element_id: "cicd-delivery"
+    vendor_service: "GitHub Actions + AWS IAM OIDC"
+    configuration:
+      oidc_provider:
+        url: "https://token.actions.githubusercontent.com"
+        audiences: ["sts.amazonaws.com"]
+        thumbprint_list: []  # TODO: GitHub の OIDC サムプリントを設定
+      iam_roles:
+        - name: "github-actions-ci"
+          description: "CI パイプライン用ロール（ビルド・テスト・ECR プッシュ）"
+          trust_policy:
+            github_org: ""  # TODO: GitHub Organization 名を設定
+            repo_filter: "*"
+            branch_filter: "*"
+          permissions:
+            - "ecr:GetAuthorizationToken"
+            - "ecr:BatchCheckLayerAvailability"
+            - "ecr:PutImage"
+            - "ecr:InitiateLayerUpload"
+            - "ecr:UploadLayerPart"
+            - "ecr:CompleteLayerUpload"
+        - name: "github-actions-cd"
+          description: "CD パイプライン用ロール（EKS デプロイ・ArgoCD 同期）"
+          trust_policy:
+            github_org: ""  # TODO: GitHub Organization 名を設定
+            repo_filter: "*"
+            branch_filter: "main"
+          permissions:
+            - "eks:DescribeCluster"
+            - "sts:AssumeRole"
+      reusable_workflows:
+        - name: "build-and-push"
+          description: "コンテナビルドと ECR プッシュの再利用ワークフロー"
+          path: ".github/workflows/reusable-build-push.yaml"
+        - name: "deploy-argocd"
+          description: "ArgoCD 経由のデプロイ再利用ワークフロー"
+          path: ".github/workflows/reusable-deploy-argocd.yaml"
+        - name: "terraform-plan-apply"
+          description: "Terraform Plan/Apply の再利用ワークフロー"
+          path: ".github/workflows/reusable-terraform.yaml"
+    dependencies:
+      - "aws-ecr"
+      - "aws-argocd"
+    iac_module: "infra/shared-platform/aws/modules/github-oidc"
+    validation_rules:
+      - rule: "OIDC プロバイダーが正しく登録されていること"
+        type: "runtime"
+        description: "GitHub Actions からの AssumeRoleWithWebIdentity 成功確認"
+      - rule: "IAM ロールの信頼ポリシーが正しい Org/Repo に制限されていること"
+        type: "static"
+        description: "過剰な権限付与を防止するための確認"
+
+  # ---------- ECR ----------
+  - id: "aws-ecr"
+    name: "ECR コンテナレジストリ"
+    canonical_element_id: "artifact-management"
+    vendor_service: "Amazon ECR"
+    configuration:
+      repositories:
+        naming_convention: "{team}/{service}"  # TODO: 命名規約を確定
+        image_tag_mutability: "IMMUTABLE"
+        encryption:
+          type: "KMS"
+          kms_key_alias: "alias/ecr-key"  # TODO: KMS キーエイリアスを確定
+      lifecycle_policy:
+        rules:
+          - description: "未タグイメージを 7 日で削除"
+            selection:
+              tag_status: "untagged"
+              count_type: "sinceImagePushed"
+              count_number: 7
+              count_unit: "days"
+            action: "expire"
+          - description: "タグ付きイメージを 100 世代保持"
+            selection:
+              tag_status: "tagged"
+              tag_prefix_list: ["v", "release"]
+              count_type: "imageCountMoreThan"
+              count_number: 100
+            action: "expire"
+      scanning:
+        type: "ENHANCED"
+        scan_on_push: true
+        continuous_scanning: true
+        scan_frequency: "CONTINUOUS_SCAN"
+      cross_account_access:
+        enabled: true
+        target_account_ids: []  # TODO: クロスアカウントアクセスを許可するアカウント ID を設定
+        permissions:
+          - "ecr:BatchGetImage"
+          - "ecr:GetDownloadUrlForLayer"
+    dependencies: []
+    iac_module: "infra/shared-platform/aws/modules/ecr"
+    validation_rules:
+      - rule: "イメージタグが IMMUTABLE に設定されていること"
+        type: "static"
+        description: "イメージタグの不変性確認"
+      - rule: "拡張スキャンが有効であること"
+        type: "runtime"
+        description: "Inspector によるコンテナ脆弱性スキャンの有効化確認"
+
+  # ---------- シークレット管理 ----------
+  - id: "aws-secrets"
+    name: "シークレット・証明書管理"
+    canonical_element_id: "secret-management"
+    vendor_service: "AWS Secrets Manager / ACM / ESO"
+    configuration:
+      secrets_manager:
+        prefix_pattern: "/{env}/{team}/{service}/{key}"  # TODO: プレフィックスパターンを確定
+        encryption:
+          kms_key_alias: "alias/secrets-key"  # TODO: KMS キーエイリアスを確定
+        rotation:
+          enabled: true
+          rotation_days: 90
+        tags:
+          managed_by: "platform"
+      external_secrets_operator:
+        namespace: "external-secrets"
+        helm_chart:
+          repository: "https://charts.external-secrets.io"
+          chart: "external-secrets"
+          version: "0.10.0"  # TODO: 最新安定バージョンに更新
+        cluster_secret_store:
+          name: "aws-secrets-manager"
+          provider: "aws"
+          region: "ap-northeast-1"
+          auth:
+            method: "pod-identity"
+      acm:
+        certificates:
+          - domain: "*.internal.example.com"  # TODO: 内部ドメインを設定
+            validation_method: "DNS"
+            auto_renewal: true
+          - domain: "*.platform.example.com"  # TODO: プラットフォームドメインを設定
+            validation_method: "DNS"
+            auto_renewal: true
+    dependencies:
+      - "aws-eks"
+    iac_module: "infra/shared-platform/aws/modules/secrets"
+    validation_rules:
+      - rule: "ESO が Secrets Manager からシークレットを取得できること"
+        type: "runtime"
+        description: "ExternalSecret リソースの同期状態確認"
+      - rule: "ACM 証明書が有効期限内であること"
+        type: "runtime"
+        description: "証明書の自動更新と有効期限の確認"
+
+  # ---------- テナントオンボーディング ----------
+  - id: "aws-tenant-onboarding"
+    name: "テナントオンボーディング"
+    canonical_element_id: "tenant-onboarding"
+    vendor_service: "Kubernetes RBAC / NetworkPolicy / ResourceQuota"
+    configuration:
+      namespace_template:
+        name_pattern: "{team}-{service}"  # TODO: Namespace 命名規約を確定
+        labels:
+          platform.example.com/tenant: "{team}"
+          platform.example.com/environment: "{env}"
+        annotations:
+          platform.example.com/owner: ""  # TODO: テナント所有者情報を設定
+      resource_quota:
+        default:
+          requests.cpu: "4"  # TODO: デフォルトクォータを調整
+          requests.memory: "8Gi"  # TODO: デフォルトクォータを調整
+          limits.cpu: "8"  # TODO: デフォルトクォータを調整
+          limits.memory: "16Gi"  # TODO: デフォルトクォータを調整
+          persistentvolumeclaims: "10"
+          services.loadbalancers: "2"
+      limit_range:
+        default:
+          cpu: "500m"
+          memory: "512Mi"
+        default_request:
+          cpu: "100m"
+          memory: "128Mi"
+        max:
+          cpu: "4"
+          memory: "8Gi"
+      network_policy:
+        default_deny_ingress: true
+        default_deny_egress: false
+        allow_dns: true
+        allow_monitoring: true
+        allow_rules:
+          - name: "allow-same-namespace"
+            description: "同一 Namespace 内の通信を許可"
+          - name: "allow-ingress-controller"
+            description: "Ingress コントローラからの通信を許可"
+      rbac:
+        roles:
+          - name: "tenant-admin"
+            description: "テナント管理者ロール"
+            rules:
+              - api_groups: ["", "apps", "batch"]
+                resources: ["*"]
+                verbs: ["*"]
+              - api_groups: ["networking.k8s.io"]
+                resources: ["ingresses"]
+                verbs: ["get", "list", "create", "update", "delete"]
+          - name: "tenant-developer"
+            description: "テナント開発者ロール"
+            rules:
+              - api_groups: ["", "apps"]
+                resources: ["pods", "deployments", "services", "configmaps"]
+                verbs: ["get", "list", "watch", "create", "update"]
+              - api_groups: [""]
+                resources: ["pods/log", "pods/exec"]
+                verbs: ["get", "create"]
+          - name: "tenant-viewer"
+            description: "テナント閲覧者ロール"
+            rules:
+              - api_groups: ["", "apps", "batch"]
+                resources: ["*"]
+                verbs: ["get", "list", "watch"]
+    dependencies:
+      - "aws-eks"
+      - "aws-argocd"
+    iac_module: "infra/shared-platform/aws/modules/tenant-onboarding"
+    validation_rules:
+      - rule: "Namespace に ResourceQuota が適用されていること"
+        type: "runtime"
+        description: "テナント Namespace のリソース制限確認"
+      - rule: "デフォルト拒否の NetworkPolicy が存在すること"
+        type: "runtime"
+        description: "テナント間ネットワーク分離の確認"
+      - rule: "RBAC RoleBinding がテナントグループに紐付いていること"
+        type: "runtime"
+        description: "テナント RBAC の適用確認"

@@ -1,0 +1,49 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "shared_platform"
+artifact_id: "shared-platform-decision-gitops"
+title: "CD 戦略に ArgoCD（GitOps）を採用する"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs: []
+inputs_ref:
+  - "shared-platform-input"
+
+decision:
+  context: |
+    EKS 上のワークロードデプロイ戦略を決定する必要がある。
+    CI（GitHub Actions）と CD を分離し、宣言的なデプロイモデルを採用するか、
+    CI ツール内でデプロイまで完結させるかの選択。
+  conflict_type: "capability"
+  options:
+    - id: "argocd-gitops"
+      description: "ArgoCD による GitOps"
+      pros:
+        - "宣言的デプロイ: Git が唯一の真実のソース"
+        - "自動ドリフト検知と修復"
+        - "変更の完全な追跡可能性（Git 履歴）"
+        - "SOC2 変更管理要件との親和性"
+        - "CNCF Graduated プロジェクト"
+      cons:
+        - "学習コスト（K8s + ArgoCD）"
+        - "ArgoCD 自体の運用が必要"
+    - id: "github-actions-deploy"
+      description: "GitHub Actions でデプロイまで完結"
+      pros:
+        - "ツール数が少ない"
+        - "CI/CD が一体で管理が容易"
+      cons:
+        - "プッシュ型デプロイ: ドリフト検知が困難"
+        - "K8s マニフェストの状態管理が弱い"
+        - "本番デプロイの承認フローが弱い"
+  chosen_option: "argocd-gitops"
+  rationale: |
+    GitOps モデルにより、K8s クラスタの状態を Git で管理し、自動ドリフト検知を実現する。
+    SOC2 の変更管理要件に対して、Git 履歴が完全な監査証跡となる。
+    本番デプロイは PR 承認 + ArgoCD 手動 Sync の 2 段階承認で安全性を確保する。
+  risk_assessment: |
+    リスク: ArgoCD の運用負荷と学習コスト
+    緩和策: ArgoCD は EKS Addon または Helm で簡易デプロイ。CCoE が運用を担当
+  affected_elements:
+    - "shared_platform.shared_delivery_pipeline"
+  review_date: "2027-03-28"

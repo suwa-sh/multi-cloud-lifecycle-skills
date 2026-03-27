@@ -25,44 +25,57 @@
 
 ## 1. 組織境界（Organization Boundary）
 
-### AWS — フルランディングゾーン
+### 組織階層図
 
-```
-AWS Organizations (管理アカウント)
-├── Security OU
-│   ├── log-archive        # CloudTrail/Config/VPC Flow Logs 集約
-│   └── security-tooling   # Security Hub/GuardDuty 委任管理
-├── Infrastructure OU
-│   ├── network-hub        # Transit Gateway/NAT Gateway/DNS
-│   └── shared-services    # 共有 CI/CD/コンテナレジストリ
-├── Workloads OU
-│   ├── CCoE OU           # ccoe-{production,staging,development}
-│   ├── Marketing OU      # marketing-{production,staging,development}
-│   ├── Sales OU          # sales-{production,staging,development}
-│   ├── Development OU    # development-{production,staging,development}
-│   ├── CustomerSuccess OU # customer-success-{production,staging,development}
-│   ├── Accounting OU     # accounting-{production,staging,development}
-│   ├── GeneralAffairs OU # general-affairs-{production,staging,development}
-│   └── Executive OU      # executive-{production,staging,development}
-└── Sandbox OU
-    └── sandbox            # 検証用（制限付き）
+```mermaid
+graph TD
+  subgraph AWS["AWS Organizations"]
+    mgmt["管理アカウント"]
+    subgraph secOU["Security OU"]
+      logArchive["log-archive"]
+      secTooling["security-tooling"]
+    end
+    subgraph infraOU["Infrastructure OU"]
+      networkHub["network-hub"]
+      sharedSvc["shared-services"]
+    end
+    subgraph workloadsOU["Workloads OU"]
+      subgraph ccoeOU["CCoE OU"]
+        ccoeProd["ccoe-production"]
+        ccoeStg["ccoe-staging"]
+        ccoeDev["ccoe-development"]
+      end
+      subgraph mktOU["Marketing OU"]
+        mktProd["marketing-production"]
+        mktStg["marketing-staging"]
+        mktDev["marketing-development"]
+      end
+      otherBU["... 他6 BU × 3環境"]
+    end
+    subgraph sandboxOU["Sandbox OU"]
+      sandbox["sandbox"]
+    end
+  end
+
+  subgraph Azure["Azure（IdP 専用）"]
+    entraID["Entra ID テナント"]
+  end
+
+  subgraph GCP["GCP（BigQuery 専用）"]
+    subgraph analyticsFolder["analytics フォルダ"]
+      gcpProd["analytics-production"]
+      gcpStg["analytics-staging"]
+      gcpDev["analytics-development"]
+    end
+  end
+
+  mgmt --> secOU
+  mgmt --> infraOU
+  mgmt --> workloadsOU
+  mgmt --> sandboxOU
 ```
 
 **合計アカウント数**: 30（管理 1 + Security 2 + Infra 2 + BU×環境 24 + Sandbox 1）
-
-### Azure — Entra ID テナントのみ
-
-単一の Entra ID テナント。ワークロード用サブスクリプションなし。
-
-### GCP — BigQuery 専用
-
-```
-GCP Organization
-└── analytics/（フォルダ）
-    ├── {org-prefix}-analytics-production
-    ├── {org-prefix}-analytics-staging
-    └── {org-prefix}-analytics-development
-```
 
 ---
 
@@ -70,12 +83,28 @@ GCP Organization
 
 ### 認証フロー
 
-```
-ユーザー → Entra ID (MFA + 条件付きアクセス)
-               ├── SAML 2.0 → AWS IAM Identity Center (Organization Instance)
-               │                  └── Permission Sets → AWS アカウント
-               └── SAML 2.0 → Cloud Identity
-                                  └── IAM Roles → GCP プロジェクト
+```mermaid
+sequenceDiagram
+  participant User as ユーザー
+  participant Entra as Entra ID
+  participant AWS as AWS IAM Identity Center
+  participant GCP as Cloud Identity
+  participant PIM as Entra PIM
+
+  User->>Entra: サインイン
+  Entra->>Entra: MFA + 条件付きアクセス評価
+  alt AWS アクセス
+    Entra->>AWS: SAML 2.0 アサーション
+    AWS->>AWS: Permission Set 適用
+  else GCP アクセス
+    Entra->>GCP: SAML 2.0 アサーション
+    GCP->>GCP: IAM Roles 適用
+  end
+  alt 特権アクセスが必要
+    User->>PIM: JIT アクティベーション申請
+    PIM->>PIM: CCoE 承認（最大8時間）
+    PIM->>Entra: ロール有効化
+  end
 ```
 
 ### 主要な設計判断
@@ -92,16 +121,47 @@ GCP Organization
 
 ## 3. ネットワーク分離（Network Segmentation）
 
-### AWS — ハブ&スポーク（Transit Gateway）
+### ネットワークトポロジ図
 
-```
-Transit Gateway (network-hub アカウント, ap-northeast-1)
-├── [production RT]      → 共有サービス VPC のみ
-├── [non-production RT]  → 共有サービス VPC のみ
-└── [shared-services RT] → 全 VPC
+```mermaid
+graph LR
+  subgraph networkHub["network-hub アカウント"]
+    tgw["Transit Gateway"]
+    natgw["NAT Gateway ×2 AZ"]
+    dns["Route 53 Private Zone"]
+  end
 
-共有サービス VPC: 10.0.0.0/16
-ワークロード VPC: 10.{bu_id}.{env_id}0.0/20
+  subgraph sharedVPC["共有サービス VPC<br/>10.0.0.0/16"]
+    eks["EKS クラスタ"]
+    nat["NAT Gateway"]
+  end
+
+  subgraph prodRT["本番ルートテーブル"]
+    prodVPC1["BU-A 本番 VPC"]
+    prodVPC2["BU-B 本番 VPC"]
+  end
+
+  subgraph nonprodRT["非本番ルートテーブル"]
+    stgVPC["ステージング VPC"]
+    devVPC["開発 VPC"]
+  end
+
+  subgraph gcpSP["GCP VPC Service Controls"]
+    bqPerimeter["BigQuery サービスペリメータ"]
+  end
+
+  prodVPC1 -->|本番 RT| tgw
+  prodVPC2 -->|本番 RT| tgw
+  stgVPC -->|非本番 RT| tgw
+  devVPC -->|非本番 RT| tgw
+  tgw -->|共有サービス RT| sharedVPC
+  sharedVPC --> natgw
+  natgw --> internet["インターネット"]
+
+  tgw -.->|環境間直接通信なし| prodRT
+  tgw -.->|環境間直接通信なし| nonprodRT
+
+  sharedVPC -->|Workload Identity Federation| bqPerimeter
 ```
 
 - **環境間通信**: 本番 ↔ 非本番間の直接ルーティングなし
@@ -109,47 +169,50 @@ Transit Gateway (network-hub アカウント, ap-northeast-1)
 - **DNS**: Route 53 Private Hosted Zone（internal.example.com）
 - **VPC Flow Logs**: 全 VPC → log-archive S3
 
-### Azure — なし（IdP 専用のためスコープ外）
-
-### GCP — VPC Service Controls
-
-- BigQuery + Cloud Storage をサービスペリメータで保護
-- AWS からの Ingress Rule で Workload Identity Federation 経由のアクセスを許可
-
 ---
 
 ## 4. ポリシー適用（Policy Enforcement）
 
-### AWS
+### セキュリティガードレール階層図
 
-| 種別 | ポリシー | 対象 |
-| --- | --- | --- |
-| SCP | リージョン制限（ap-northeast-1, us-east-1） | Workloads, Sandbox |
-| SCP | root ユーザー操作制限 | Workloads, Infra, Security |
-| SCP | 必須タグ強制（cost-center, environment, owner） | Workloads |
-| SCP | CloudTrail 無効化禁止 | Root |
-| SCP | S3 パブリックアクセスブロック解除禁止 | Workloads, Infra |
-| SCP | IAM ユーザー作成禁止 | Workloads, Infra, Security |
-| Control Tower | 予防的/検出的/プロアクティブコントロール | 全 OU |
-| Config Rule | タグ必須、暗号化必須、CloudTrail 有効化等 | 全アカウント |
+```mermaid
+graph TD
+  subgraph aws["AWS ガードレール"]
+    ct["Control Tower Controls<br/>予防的/検出的/プロアクティブ"]
+    scp["SCP"]
+    config["Config Rules"]
 
-### Azure — 条件付きアクセス
+    ct --> scp
+    ct --> config
 
-| ポリシー | 内容 |
-| --- | --- |
-| CA-001 | 全ユーザー MFA 必須 |
-| CA-002 | 高リスクサインインブロック |
-| CA-003 | 中リスクサインインで MFA 要求 |
-| CA-004 | AWS SSO セッション頻度 8 時間 |
+    scp --> scpRegion["リージョン制限<br/>ap-northeast-1, us-east-1"]
+    scp --> scpRoot["root 操作制限"]
+    scp --> scpTags["必須タグ強制"]
+    scp --> scpCT["CloudTrail 無効化禁止"]
+    scp --> scpS3["S3 パブリックブロック"]
+    scp --> scpIAM["IAM ユーザー作成禁止"]
 
-### GCP — 組織ポリシー
+    config --> cfgTags["タグ必須チェック"]
+    config --> cfgEnc["暗号化必須チェック"]
+    config --> cfgTrail["CloudTrail 有効化"]
+  end
 
-| 制約 | 内容 |
-| --- | --- |
-| gcp.resourceLocations | asia-northeast1 のみ |
-| iam.disableServiceAccountKeyCreation | キー作成禁止 |
-| compute.skipDefaultNetworkCreation | デフォルト VPC スキップ |
-| iam.allowedPolicyMemberDomains | 許可ドメインのみ |
+  subgraph azure["Azure ガードレール"]
+    ca["条件付きアクセス"]
+    ca --> ca001["CA-001: MFA 必須"]
+    ca --> ca002["CA-002: 高リスクブロック"]
+    ca --> ca003["CA-003: 中リスク MFA"]
+    ca --> ca004["CA-004: セッション 8h"]
+  end
+
+  subgraph gcp["GCP ガードレール"]
+    orgPolicy["組織ポリシー"]
+    orgPolicy --> opLoc["ロケーション制限<br/>asia-northeast1"]
+    orgPolicy --> opKey["SA キー作成禁止"]
+    orgPolicy --> opVPC["デフォルト VPC スキップ"]
+    orgPolicy --> opDomain["ドメイン制限"]
+  end
+```
 
 ---
 
@@ -157,12 +220,27 @@ Transit Gateway (network-hub アカウント, ap-northeast-1)
 
 ### クロスクラウド監査統合
 
-```
-AWS CloudTrail (組織トレイル)  ──→  S3 (log-archive)  ←── 正本（365日 + Glacier）
-                                      ↑
-Entra ID 監査ログ ──→ Event Hub ──→ EventBridge ──→ S3
-                                      ↑
-GCP Audit Logs ──→ Cloud Storage ──→ Transfer Service ──→ S3
+```mermaid
+sequenceDiagram
+  participant CT as AWS CloudTrail
+  participant S3 as S3 (log-archive)
+  participant Entra as Entra ID ログ
+  participant EH as Azure Event Hub
+  participant EB as AWS EventBridge
+  participant GCAL as GCP Audit Logs
+  participant GCS as Cloud Storage
+  participant TS as Transfer Service
+
+  CT->>S3: 組織トレイル（全アカウント・全リージョン）
+  Note over S3: Object Lock 365日<br/>→ Glacier Deep Archive
+
+  Entra->>EH: Diagnostic Settings
+  EH->>EB: Partner Event Source
+  EB->>S3: Entra ID ログ保管
+
+  GCAL->>GCS: フォルダ Log Sink
+  GCS->>TS: 日次エクスポート
+  TS->>S3: GCP ログ二重保管
 ```
 
 | ソース | 保持（一次） | 保持（長期） | 改ざん防止 |

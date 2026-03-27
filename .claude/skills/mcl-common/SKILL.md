@@ -110,3 +110,13 @@ vendor mapping での適合度を 4 段階で評価する:
 - YAML artifact 内の人間向けテキスト（`title`, `description`, `context`, `rationale`, `comment` 等）は日本語で記述する
 - キー名、`artifact_id`、`artifact_type`、`skill_type`、ファイル名、パス名は英語のまま
 - 生成 Markdown、IaC コメントも日本語で記述する
+
+## 図解ポリシー
+
+ターゲットアーキテクチャ Markdown 内の図解には Mermaid 記法を使用すること。ASCII アートは使わない。
+
+- アーキテクチャ全体図: `graph TD` または `graph LR`
+- レイヤー構造: `graph TD` でサブグラフを使用
+- シーケンス図（データフロー等）: `sequenceDiagram`
+- デプロイメント構成: `graph TD` でクラウドごとにサブグラフを分離
+- ノードのラベルは日本語で記述する（ノード ID は英語）
