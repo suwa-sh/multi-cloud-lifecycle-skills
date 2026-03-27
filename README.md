@@ -189,6 +189,98 @@ your-project/
 - キー名、artifact_id、ファイル名は英語
 - IaC のプレースホルダー値には `# TODO:` コメント付き
 
+## 出力サンプル
+
+`sample/` ディレクトリには、3 レイヤーすべてを実行した完全なサンプル出力が含まれています。スキルがどのような artifact を生成するかを理解するためのリファレンスとして利用できます。
+
+### シナリオ
+
+| 項目 | 内容 |
+| --- | --- |
+| 対象クラウド | AWS（フルスタック）+ Azure（Entra ID IdP 専用）+ GCP（BigQuery 専用） |
+| BU 数 | 8（CCoE, マーケティング, 営業, 開発, カスタマーサクセス, 経理, 総務, 経営） |
+| 環境 | 本番 / ステージング / 開発（3 面） |
+| コンプライアンス | SOC2 Type II |
+| 共有ランタイム | EKS + Lambda ハイブリッド |
+| CI/CD | GitHub Actions + ArgoCD（GitOps） |
+| 監視 | AMP + AMG（マネージド Prometheus / Grafana） |
+| データ分析 | BigQuery（dbt による ELT、Looker Studio で可視化） |
+
+### アーキテクチャドキュメント
+
+各レイヤーの設計結果は Mermaid 図付きのアーキテクチャドキュメントとして生成されます。
+
+| レイヤー | ドキュメント | 主な内容 |
+| --- | --- | --- |
+| Foundation | [基盤アーキテクチャ](sample/docs/cloud-context/generated-md/foundation/foundation-architecture.md) | 組織階層図、認証フロー、ネットワークトポロジ、セキュリティガードレール階層、クロスクラウド監査統合 |
+| Shared Platform | [共有プラットフォームアーキテクチャ](sample/docs/cloud-context/generated-md/shared-platform/shared-platform-architecture.md) | EKS+Lambda 構成図、CI/CD パイプラインフロー、オブザーバビリティスタック、テナントオンボーディング |
+| Product | [データ分析基盤アーキテクチャ](sample/docs/cloud-context/generated-md/product/product-architecture.md) | データパイプライン全体図、dbt モデル構成、クロスクラウドデプロイメント、SLI/SLO |
+
+### 生成物一覧
+
+```
+sample/
+├── specs/
+│   ├── foundation/
+│   │   ├── input/foundation-input.yaml           # ヒアリング結果
+│   │   └── output/
+│   │       ├── foundation-canonical.yaml          # ベンダー中立モデル（8 capability）
+│   │       ├── foundation-mapping-{aws,azure,gcp}.yaml  # 3 クラウドマッピング
+│   │       ├── foundation-impl-{aws,azure,gcp}.yaml     # 3 クラウド実装仕様
+│   │       └── foundation-context.yaml            # 下位レイヤーへの入力
+│   ├── shared-platform/
+│   │   ├── input/shared-platform-input.yaml
+│   │   └── output/
+│   │       ├── shared-platform-canonical.yaml     # 7 capability
+│   │       ├── service-catalog.yaml               # 必須 4 + 任意 3 サービス
+│   │       ├── shared-platform-mapping-aws.yaml
+│   │       ├── shared-platform-impl-aws.yaml
+│   │       └── shared-platform-context.yaml
+│   └── product/
+│       ├── input/product-input.yaml
+│       └── output/
+│           ├── product-workload-model.yaml        # 取り込み/変換/提供の 3 層
+│           ├── product-mapping-gcp.yaml
+│           ├── product-impl-gcp.yaml
+│           ├── product-observability.yaml         # SLI/SLO/アラート
+│           └── product-cost-hints.yaml            # 8 つのコスト最適化戦略
+├── docs/cloud-context/
+│   ├── sources/{aws,azure,gcp}/                   # ベンダーソース（24 ファイル）
+│   ├── decisions/
+│   │   ├── foundation/                            # Azure IdP 限定、GCP BQ 限定、コスト按分、NW トポロジ
+│   │   ├── shared-platform/                       # ハイブリッドランタイム、GitOps
+│   │   └── product/                               # dbt 採用、マルチパターン取り込み
+│   ├── conformance/{foundation,shared-platform,product}/  # 適合性レポート
+│   └── generated-md/{foundation,shared-platform,product}/ # Mermaid 図付きアーキテクチャ MD
+└── infra/
+    ├── foundation/
+    │   ├── aws/     # 7 モジュール（organizations, audit, security, network 等）
+    │   ├── azure/   # 1 モジュール（entra-id）
+    │   └── gcp/     # 6 モジュール（resource-hierarchy, identity, org-policy 等）
+    ├── shared-platform/
+    │   └── aws/     # 6 モジュール（eks, observability, argocd, ecr 等）
+    └── product/
+        └── gcp/     # 4 モジュール（bigquery-datasets, data-ingestion, dbt, security）
+```
+
+### サンプルの再生成
+
+`sample/` の内容を自分の要件で再生成したい場合:
+
+```bash
+# sample/ を空にしてからスキルを実行
+rm -rf sample/*
+
+# Claude Code で対話的に設計
+# 「./sample ディレクトリをルートにしたい」と伝えた上で:
+# 1. /mcl-foundation-design
+#    agentからの質問に、選択肢から回答
+# 2. /mcl-shared-platform-design k8s基盤
+#    agentからの質問に、選択肢から回答
+# 3. /mcl-product-design データ分析基盤
+#    agentからの質問に、選択肢から回答
+```
+
 ## リポジトリ構成
 
 ```

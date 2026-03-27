@@ -69,7 +69,7 @@ graph TD
 ## CI/CD パイプラインフロー図
 
 ```mermaid
-graph LR
+graph TD
   dev["開発者<br/>git push"] --> gh["GitHub<br/>リポジトリ"]
   gh --> ci["GitHub Actions CI"]
   ci --> build["コードビルド"]
