@@ -1,0 +1,164 @@
+schema_version: "1.0"
+artifact_type: "conformance_report"
+skill_type: "product"
+artifact_id: "product-conformance-gcp"
+title: "全社データ分析基盤 GCP 適合性レポート"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP BigQuery ドキュメント"
+  - "GCP セキュリティベストプラクティス"
+decision_refs:
+  - "product-decision-dbt-elt"
+  - "product-decision-data-ingestion"
+inputs_ref:
+  - "product-workload-analytics"
+  - "product-impl-gcp"
+  - "foundation-context"
+  - "shared-platform-context"
+
+vendor: "gcp"
+canonical_ref: "product-workload-analytics"
+implementation_ref: "product-impl-gcp"
+
+summary:
+  total_requirements: 15
+  conformant: 13
+  partial: 2
+  non_conformant: 0
+  deferred: 0
+
+results:
+  # ====================================================================
+  # データ取り込み要件
+  # ====================================================================
+  - canonical_element_id: "product.data_ingestion"
+    requirement_id: "product.data_ingestion.req-01"
+    status: "conformant"
+    evidence: "Cloud Storage Transfer Service + BigQuery Load Job で RDS/Aurora データを日次取り込み。Workload Identity Federation で SA キー不要"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_ingestion"
+    requirement_id: "product.data_ingestion.req-02"
+    status: "conformant"
+    evidence: "Cloud Storage Transfer Service で S3 データを日次転送し、BigQuery Load Job でロード"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_ingestion"
+    requirement_id: "product.data_ingestion.req-03"
+    status: "conformant"
+    evidence: "GA4 BigQuery Export（ネイティブ連携）で日次 + ストリーミングデータを自動取り込み。無料"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_ingestion"
+    requirement_id: "product.data_ingestion.req-04"
+    status: "conformant"
+    evidence: "BigQuery Data Transfer Service で Google Ads データを自動取り込み"
+    notes: "Facebook Ads 等の非 Google 広告はサードパーティコネクタまたは Cloud Functions で対応"
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_ingestion"
+    requirement_id: "product.data_ingestion.req-05"
+    status: "conformant"
+    evidence: "Cloud Functions（Python 3.12）で Slack/Sentry API からデータを取得し、BigQuery Streaming Insert で取り込み"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_ingestion"
+    requirement_id: "product.data_ingestion.req-06"
+    status: "conformant"
+    evidence: "CloudWatch → S3 export → Cloud Storage Transfer Service → BigQuery Load Job で日次取り込み"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # データ変換要件
+  # ====================================================================
+  - canonical_element_id: "product.data_transformation"
+    requirement_id: "product.data_transformation.req-01"
+    status: "conformant"
+    evidence: "dbt プロジェクトで staging / intermediate / mart の 3 層モデルを構築"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_transformation"
+    requirement_id: "product.data_transformation.req-02"
+    status: "conformant"
+    evidence: "dbt テスト（not_null, unique, accepted_values, relationships）でデータ品質を自動検証"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_transformation"
+    requirement_id: "product.data_transformation.req-03"
+    status: "conformant"
+    evidence: "GitHub Actions ワークフロー + Cloud Scheduler で日次 dbt 実行を自動化"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_transformation"
+    requirement_id: "product.data_transformation.req-04"
+    status: "conformant"
+    evidence: "BigQuery Column-level Security + Dynamic Data Masking で PII カラムを保護。Data Catalog でポリシータグを管理"
+    notes: ""
+    deviation_ref: ""
+
+  # ====================================================================
+  # データ提供要件
+  # ====================================================================
+  - canonical_element_id: "product.data_serving"
+    requirement_id: "product.data_serving.req-01"
+    status: "conformant"
+    evidence: "Looker Studio から BigQuery mart データセットに直接接続。BI Engine リザベーションで高速化"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_serving"
+    requirement_id: "product.data_serving.req-02"
+    status: "conformant"
+    evidence: "BigQuery Authorized Views で BU 別のデータアクセスを制御"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "product.data_serving"
+    requirement_id: "product.data_serving.req-03"
+    status: "partial"
+    evidence: "BigQuery ML は利用可能だが、具体的な ML モデル定義は未策定"
+    notes: "ML ユースケースが具体化した時点で実装仕様を追加する"
+    deviation_ref: ""
+
+  # ====================================================================
+  # 基盤ガードレール適合性
+  # ====================================================================
+  - canonical_element_id: "foundation.policy_enforcement"
+    requirement_id: "foundation.guardrail.location"
+    status: "conformant"
+    evidence: "全リソース（BigQuery データセット、Cloud Storage バケット、Cloud Functions）が asia-northeast1 に配置"
+    notes: "組織ポリシー constraints/gcp.resourceLocations で強制"
+    deviation_ref: ""
+
+  - canonical_element_id: "foundation.security_guardrails"
+    requirement_id: "foundation.guardrail.sa-key-prohibition"
+    status: "conformant"
+    evidence: "全認証に Workload Identity Federation を使用。SA キー作成は組織ポリシー iam.disableServiceAccountKeyCreation で禁止"
+    notes: "AWS → GCP: Workload Identity Federation、GitHub → GCP: GitHub OIDC"
+    deviation_ref: ""
+
+  # ====================================================================
+  # 共有プラットフォーム標準適合性
+  # ====================================================================
+  - canonical_element_id: "shared_platform.ci_cd"
+    requirement_id: "shared-platform.standard.cicd"
+    status: "conformant"
+    evidence: "GitHub Actions で dbt の CI/CD パイプラインを構築。PR 時に dbt run + test を実行"
+    notes: ""
+    deviation_ref: ""
+
+  - canonical_element_id: "shared_platform.observability"
+    requirement_id: "shared-platform.standard.observability"
+    status: "partial"
+    evidence: "SLI/SLO を定義済み。AMG ダッシュボードで運用メトリクスを可視化。Cloud Audit Logs で監査ログを記録"
+    notes: "AMG BigQuery データソースプラグインの設定は別途必要。OpenTelemetry との統合は将来検討"
+    deviation_ref: ""

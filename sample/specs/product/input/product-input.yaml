@@ -1,0 +1,68 @@
+schema_version: "1.0"
+artifact_type: "context"
+skill_type: "product"
+artifact_id: "product-input-analytics"
+title: "全社データ分析基盤 入力要件"
+status: "approved"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs: []
+decision_refs: []
+inputs_ref:
+  - "foundation-context"
+  - "shared-platform-context"
+
+product_name: "全社データ分析基盤"
+target_cloud: "gcp"
+primary_service: "bigquery"
+
+workload_type: "data_pipeline"
+usage_patterns:
+  - "bi_dashboard"
+  - "adhoc_analysis"
+  - "etl_elt"
+  - "ml_data_preparation"
+
+bigquery:
+  edition: "on_demand"
+  estimated_data_volume: "100GB-1TB"
+  location: "asia-northeast1"
+
+data_sources:
+  from_aws:
+    - type: "rds_aurora"
+      description: "トランザクションデータ（PostgreSQL）"
+      frequency: "日次バッチ"
+    - type: "s3"
+      description: "ログ、ファイル、データレイク"
+      frequency: "日次バッチ"
+    - type: "cloudwatch"
+      description: "CloudWatch Logs / メトリクス"
+      frequency: "日次バッチ"
+  from_saas:
+    - name: "GA4"
+      description: "Google Analytics 4 ウェブ分析データ"
+      method: "BigQuery Export（ネイティブ連携）"
+    - name: "Slack"
+      description: "利用状況分析"
+      method: "Slack API → Cloud Functions → BigQuery"
+    - name: "広告プラットフォーム"
+      description: "Google Ads, Meta Ads 等の広告パフォーマンスデータ"
+      method: "BigQuery Data Transfer Service"
+    - name: "Sentry"
+      description: "エラー監視データ"
+      method: "Sentry API → Cloud Functions → BigQuery"
+
+etl_tool: "dbt"
+etl_description: "dbt による SQL ベース変換。BigQuery 上で ELT パターンを採用"
+
+data_sensitivity:
+  pii: true
+  pii_handling: "BigQuery Column-level Security + Data Masking でマスキング"
+  business_confidential: true
+
+bi_tools:
+  primary: "looker_studio"
+  secondary: "amg_grafana"
+  description: "BI / ダッシュボードは Looker Studio、運用メトリクスは共有プラットフォームの AMG を流用"
+
+cost_posture: "balanced"

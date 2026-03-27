@@ -1,0 +1,73 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "product"
+artifact_id: "product-decision-data-ingestion"
+title: "データ取り込み戦略としてマルチパターン方式を採用する"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP BigQuery Data Transfer Service ドキュメント"
+  - "GCP Cloud Storage Transfer Service ドキュメント"
+  - "GA4 BigQuery Export ドキュメント"
+decision_refs: []
+inputs_ref:
+  - "product-workload-analytics"
+  - "foundation-context"
+
+decision:
+  context: |
+    全社データ分析基盤において、複数のデータソース（AWS RDS/Aurora, S3, GA4, 広告, Slack, Sentry, CloudWatch）
+    からのデータを BigQuery に集約する取り込み戦略を決定する必要がある。
+    データソースごとに特性が異なるため、単一の取り込み方式では最適化が困難である。
+  conflict_type: "capability"
+  options:
+    - id: "multi-pattern"
+      description: "データソースごとに最適な取り込みパターンを使い分ける（ネイティブ連携 + S3 リレー + API 関数）"
+      pros:
+        - "各データソースに最適化された取り込み方式を選択可能"
+        - "マネージドサービスを最大限活用し、カスタムコードを最小化"
+        - "GA4 / Ads のネイティブ連携はゼロコスト・ゼロ運用"
+        - "AWS データは S3 リレー方式で既存の S3 エクスポート機能を活用"
+        - "Workload Identity Federation で SA キー不要のセキュアな連携"
+      cons:
+        - "取り込みパターンが複数あり、運用の一貫性が低い"
+        - "監視・アラートを複数パターンに対応させる必要がある"
+    - id: "unified-etl"
+      description: "Dataflow で全データソースを統一的に取り込む"
+      pros:
+        - "取り込みパターンが統一され、運用が一貫"
+        - "バッチ・ストリーミング両対応"
+      cons:
+        - "GA4 / Ads のネイティブ連携を使えず、API 連携のコードが必要"
+        - "Dataflow の学習・運用コストが高い"
+        - "シンプルな S3 → BigQuery のコピーにも Dataflow パイプラインが必要"
+    - id: "third-party-etl"
+      description: "Fivetran / Airbyte 等のサードパーティ ETL ツールを使用"
+      pros:
+        - "多数のコネクタが事前構築済み"
+        - "GUI ベースの設定で非エンジニアでも管理可能"
+      cons:
+        - "ライセンスコストが高い（データ量に比例）"
+        - "ベンダーロックイン"
+        - "カスタムコネクタの開発が困難な場合がある"
+        - "Workload Identity Federation との統合が限定的"
+  chosen_option: "multi-pattern"
+  rationale: |
+    マルチパターン方式を採用する。主な理由:
+    1. マネージドサービスの最大活用: GA4 BigQuery Export（無料・ネイティブ）、
+       Ads Data Transfer Service（マネージド）を直接利用し、運用負荷とコストを最小化
+    2. カスタムコードの最小化: S3 リレーは Cloud Storage Transfer Service で
+       マネージド転送、API 連携のみ Cloud Functions で最小限のコードを記述
+    3. セキュリティ: Workload Identity Federation により SA キー不要の
+       セキュアなクロスクラウド連携を実現
+    4. コスト最適化: ネイティブ連携はゼロコスト、S3 リレーは転送量課金のみ
+    運用の一貫性はオブザーバビリティ層（統一的な監視・アラート）で担保する。
+  risk_assessment: |
+    リスク: 取り込みパターンの増加に伴う運用複雑性の増大
+    緩和策: 各パターンの監視を product-observability で統一的に定義。
+    取り込み完了時刻の SLI/SLO で全パターンを横断的に監視する
+    発生確率: 中（新規データソースの追加時にパターンが増える可能性）
+    影響度: 低（各パターンはマネージドサービスベースのため、個別の運用負荷は小さい）
+  affected_elements:
+    - "product.data_ingestion"
+  review_date: "2027-03-28"

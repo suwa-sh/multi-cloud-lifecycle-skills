@@ -1,0 +1,79 @@
+schema_version: "1.0"
+artifact_type: "decision_record"
+skill_type: "product"
+artifact_id: "product-decision-dbt-elt"
+title: "ELT ツールとして dbt を採用する"
+status: "accepted"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "dbt ドキュメント"
+  - "GCP Dataflow ドキュメント"
+  - "GCP Cloud Composer ドキュメント"
+decision_refs: []
+inputs_ref:
+  - "product-workload-analytics"
+  - "foundation-context"
+
+decision:
+  context: |
+    全社データ分析基盤において、BigQuery に取り込んだデータを変換・モデリングする
+    ELT ツールを選定する必要がある。データエンジニアチームの SQL スキルは高いが、
+    Java/Python ベースの ETL フレームワークの経験は限定的である。
+    日次バッチ処理がメインであり、ストリーミング変換の要件はない。
+  conflict_type: "capability"
+  options:
+    - id: "dbt"
+      description: "dbt（data build tool）による SQL ベースの ELT"
+      pros:
+        - "SQL ベースで学習コストが低い"
+        - "BigQuery ネイティブサポート（dbt-bigquery アダプター）"
+        - "バージョン管理（Git）との親和性が高い"
+        - "テスト機能が組み込み（not_null, unique, accepted_values, relationships）"
+        - "ドキュメント自動生成（dbt docs generate）"
+        - "OSS コミュニティが活発でパッケージが豊富"
+        - "staging / intermediate / mart の 3 層モデルのベストプラクティスが確立"
+      cons:
+        - "SQL で表現しにくい複雑な変換には不向き"
+        - "ストリーミング処理には非対応"
+        - "実行環境（GitHub Actions 等）の別途構築が必要"
+    - id: "dataflow"
+      description: "Cloud Dataflow（Apache Beam）による変換パイプライン"
+      pros:
+        - "バッチ・ストリーミング両対応"
+        - "GCP フルマネージド"
+        - "複雑な変換ロジックを Java/Python で記述可能"
+      cons:
+        - "学習コストが高い（Apache Beam のプログラミングモデル）"
+        - "SQL ベースのチームには過度に複雑"
+        - "バッチ処理のみの要件にはオーバースペック"
+        - "デバッグが困難"
+    - id: "cloud-composer"
+      description: "Cloud Composer（Apache Airflow）によるオーケストレーション + BigQuery SQL"
+      pros:
+        - "ワークフローオーケストレーション機能が豊富"
+        - "Python ベースの DAG 定義"
+        - "GCP フルマネージド"
+      cons:
+        - "Airflow 環境のコストが高い（常時起動の GKE クラスタ）"
+        - "変換ロジック自体は BigQuery SQL で書くため、dbt のテスト・ドキュメント機能がない"
+        - "日次バッチのスケジューリングのみなら Cloud Scheduler で十分"
+        - "運用の複雑性が高い"
+  chosen_option: "dbt"
+  rationale: |
+    SQL ベースの ELT ツールとして dbt を採用する。主な理由:
+    1. チームの SQL スキルを直接活用でき、学習コストが最小
+    2. BigQuery ネイティブサポートにより、パーティション・クラスタリング等の最適化が容易
+    3. Git ベースのバージョン管理でコードレビュー・CI/CD が標準ワークフローに統合可能
+    4. 組み込みテスト機能でデータ品質の自動検証が可能
+    5. ドキュメント自動生成でデータカタログの役割も担える
+    スケジューリングは Cloud Scheduler + GitHub Actions の組み合わせで実現し、
+    Cloud Composer の高コストを回避する。
+  risk_assessment: |
+    リスク: SQL で表現困難な複雑な変換ロジックが発生した場合の対応
+    緩和策: dbt の Python モデル機能（dbt-py）で Python ベースの変換も可能。
+    それでも不足する場合は Dataflow を部分的に導入し、dbt と組み合わせる
+    発生確率: 低（現時点の要件は SQL で十分対応可能）
+    影響度: 低（部分的な Dataflow 追加で対応可能）
+  affected_elements:
+    - "product.data_transformation"
+  review_date: "2027-03-28"

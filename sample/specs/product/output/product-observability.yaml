@@ -1,0 +1,178 @@
+schema_version: "1.0"
+artifact_type: "observability_spec"
+skill_type: "product"
+artifact_id: "product-observability"
+title: "全社データ分析基盤 オブザーバビリティ仕様"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP BigQuery INFORMATION_SCHEMA ドキュメント"
+  - "GCP Cloud Monitoring ドキュメント"
+  - "GCP Cloud Audit Logs ドキュメント"
+decision_refs:
+  - "product-decision-dbt-elt"
+  - "product-decision-data-ingestion"
+inputs_ref:
+  - "product-workload-analytics"
+  - "product-impl-gcp"
+  - "foundation-context"
+
+slis:
+  - id: "sli-data-freshness"
+    name: "データ取り込み完了時刻"
+    description: "日次データ取り込みの完了時刻を計測。全データソースの取り込みが完了した時刻"
+    measurement: "INFORMATION_SCHEMA.JOBS でロードジョブの最終完了時刻を取得"
+    unit: "timestamp (JST)"
+
+  - id: "sli-dbt-success-rate"
+    name: "dbt ビルド成功率"
+    description: "dbt run + dbt test の成功率（過去 30 日間のローリングウィンドウ）"
+    measurement: "GitHub Actions ワークフロー実行結果から算出"
+    unit: "percentage"
+
+  - id: "sli-dashboard-response"
+    name: "ダッシュボード応答時間"
+    description: "Looker Studio ダッシュボードの初回表示にかかる時間"
+    measurement: "Looker Studio のパフォーマンスレポート + 合成監視"
+    unit: "seconds"
+
+  - id: "sli-query-cost"
+    name: "日次クエリコスト"
+    description: "BigQuery の日次クエリコスト（オンデマンド課金ベース）"
+    measurement: "INFORMATION_SCHEMA.JOBS で total_bytes_billed を集計し、単価を乗算"
+    unit: "USD/day"
+
+slos:
+  - id: "slo-data-freshness"
+    sli_ref: "sli-data-freshness"
+    target: "日次データ取り込みが 06:00 JST までに完了すること"
+    threshold: "99%"
+    window: "30 日間ローリング"
+    error_budget: "月間 0.3 日（約 7 時間）"
+
+  - id: "slo-dbt-success"
+    sli_ref: "sli-dbt-success-rate"
+    target: "dbt ビルド成功率 99.5% 以上"
+    threshold: "99.5%"
+    window: "30 日間ローリング"
+    error_budget: "月間 0.15 日（約 3.6 時間）"
+
+  - id: "slo-dashboard-response"
+    sli_ref: "sli-dashboard-response"
+    target: "ダッシュボードの初回表示が 10 秒以内"
+    threshold: "95%"
+    window: "7 日間ローリング"
+
+metrics:
+  - id: "metric-bq-jobs"
+    name: "BigQuery ジョブメトリクス"
+    source: "INFORMATION_SCHEMA.JOBS"
+    description: "ジョブ種別（LOAD, QUERY, COPY）ごとの実行数、所要時間、スキャン量"
+    query_example: |
+      SELECT
+        job_type,
+        COUNT(*) AS job_count,
+        AVG(TIMESTAMP_DIFF(end_time, start_time, SECOND)) AS avg_duration_sec,
+        SUM(total_bytes_billed) / POW(1024, 4) AS total_tb_billed
+      FROM `region-asia-northeast1`.INFORMATION_SCHEMA.JOBS
+      WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+      GROUP BY job_type
+
+  - id: "metric-slot-utilization"
+    name: "スロット使用量"
+    source: "INFORMATION_SCHEMA.JOBS_TIMELINE"
+    description: "時間帯別のスロット使用量。Standard エディション移行の判断材料"
+
+  - id: "metric-bytes-scanned"
+    name: "スキャンバイト数"
+    source: "INFORMATION_SCHEMA.JOBS"
+    description: "クエリごとのスキャンバイト数。コスト最適化の指標"
+
+  - id: "metric-cost-per-query"
+    name: "クエリ別コスト"
+    source: "INFORMATION_SCHEMA.JOBS"
+    description: "ユーザー・クエリ別のコスト分析。高コストクエリの特定"
+
+logs:
+  - id: "log-audit"
+    name: "Cloud Audit Logs（Data Access）"
+    description: "BigQuery データアクセスの監査ログ。誰がどのテーブルにアクセスしたかを記録"
+    log_type: "DATA_READ, DATA_WRITE"
+    retention: "365 日（基盤レイヤーのログ集約設定に準拠）"
+    sink: "基盤レイヤーのログシンクで集約"
+
+  - id: "log-dbt"
+    name: "dbt 実行ログ"
+    description: "dbt run / test の実行ログ。モデルごとの成否・所要時間を記録"
+    source: "GitHub Actions ワークフローログ"
+    retention: "90 日（GitHub の標準保持期間）"
+    artifact: "dbt run_results.json を GitHub Actions Artifacts に保存"
+
+  - id: "log-cloud-functions"
+    name: "Cloud Functions ログ"
+    description: "Slack/Sentry 取り込み関数の実行ログ"
+    source: "Cloud Logging"
+    retention: "30 日（Cloud Logging デフォルト）"
+    structured: true
+
+alerts:
+  - id: "alert-ingestion-delay"
+    name: "データ取り込み遅延アラート"
+    description: "日次取り込みが 06:00 JST までに完了しない場合にアラート"
+    condition: "06:00 JST 時点で当日分のロードジョブが完了していない"
+    severity: "high"
+    notification:
+      channels: ["Slack (#data-platform-alerts)", "PagerDuty"]
+    runbook: "# TODO: 取り込み遅延時の対応手順書"
+
+  - id: "alert-dbt-failure"
+    name: "dbt ビルド失敗アラート"
+    description: "dbt run または dbt test が失敗した場合にアラート"
+    condition: "GitHub Actions ワークフローが failure ステータス"
+    severity: "high"
+    notification:
+      channels: ["Slack (#data-platform-alerts)", "GitHub Issue 自動作成"]
+    runbook: "# TODO: dbt 失敗時の対応手順書"
+
+  - id: "alert-daily-cost"
+    name: "日次コスト閾値超過アラート"
+    description: "BigQuery の日次コストが閾値を超えた場合にアラート"
+    condition: "日次コスト > # TODO: 閾値（USD）"
+    severity: "medium"
+    notification:
+      channels: ["Slack (#data-platform-alerts)"]
+    runbook: "# TODO: コスト閾値超過時の対応手順書（高コストクエリの特定・停止）"
+
+  - id: "alert-unauthorized-access"
+    name: "不正データアクセスアラート"
+    description: "権限のないユーザーによるデータアクセス試行を検知"
+    condition: "Cloud Audit Logs で permission denied エラーが発生"
+    severity: "critical"
+    notification:
+      channels: ["Slack (#security-alerts)", "PagerDuty", "セキュリティチーム"]
+    runbook: "# TODO: 不正アクセス検知時の対応手順書"
+
+dashboards:
+  - id: "dashboard-platform-ops"
+    name: "データプラットフォーム運用ダッシュボード"
+    tool: "AMG (Amazon Managed Grafana)"
+    description: "プラットフォーム運用チーム向けの技術メトリクスダッシュボード"
+    panels:
+      - "データ取り込み完了時刻（データソース別）"
+      - "dbt ビルド成功率（日次推移）"
+      - "BigQuery スロット使用量（時間帯別）"
+      - "日次クエリコスト（推移 + 内訳）"
+      - "高コストクエリ Top 10"
+      - "Cloud Functions 実行成否"
+    refresh_interval: "5 分"
+
+  - id: "dashboard-business-kpi"
+    name: "ビジネス KPI ダッシュボード"
+    tool: "Looker Studio"
+    description: "ビジネスステークホルダー向けの KPI ダッシュボード"
+    panels:
+      - "売上推移（日次/週次/月次）"
+      - "ユーザーアクティビティ（GA4 データ）"
+      - "コンバージョン率（ファネル分析）"
+      - "マーケティング ROI（広告データ統合）"
+    refresh_interval: "日次（データ取り込み完了後）"

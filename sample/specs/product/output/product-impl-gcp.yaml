@@ -1,0 +1,372 @@
+schema_version: "1.0"
+artifact_type: "implementation_spec"
+skill_type: "product"
+artifact_id: "product-impl-gcp"
+title: "全社データ分析基盤 GCP 実装仕様"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP BigQuery ドキュメント"
+  - "GCP Cloud Storage Transfer Service ドキュメント"
+  - "GCP Data Transfer Service ドキュメント"
+  - "dbt BigQuery adapter ドキュメント"
+decision_refs:
+  - "product-decision-dbt-elt"
+  - "product-decision-data-ingestion"
+inputs_ref:
+  - "product-workload-analytics"
+  - "product-mapping-gcp"
+  - "foundation-context"
+  - "shared-platform-context"
+
+vendor: "gcp"
+canonical_ref: "product-workload-analytics"
+mapping_ref: "product-mapping-gcp"
+
+components:
+  # ====================================================================
+  # 1. BigQuery データセット構成
+  # ====================================================================
+  - id: "gcp-bigquery-datasets"
+    name: "BigQuery データセット構成"
+    canonical_element_id: "product.data_ingestion"
+    vendor_service: "BigQuery"
+    configuration:
+      datasets:
+        - name: "raw"
+          description: "取り込み生データ。ソースシステムのスキーマをそのまま保持"
+          environments: ["production", "staging", "development"]
+          location: "asia-northeast1"
+          default_table_expiration_ms: null
+          default_partition_expiration_ms: null
+        - name: "staging"
+          description: "dbt staging 層。ソースデータのクレンジング・型変換"
+          environments: ["production", "staging", "development"]
+          location: "asia-northeast1"
+        - name: "intermediate"
+          description: "dbt intermediate 層。ビジネスロジックの適用・結合"
+          environments: ["production", "staging", "development"]
+          location: "asia-northeast1"
+        - name: "mart"
+          description: "dbt mart 層。BI / 分析向けの最終テーブル"
+          environments: ["production", "staging", "development"]
+          location: "asia-northeast1"
+      naming_convention: "{dataset}_{environment}"
+      partitioning:
+        strategy: "日付パーティション（_PARTITIONDATE または event_date カラム）"
+        description: "全ファクトテーブルに日付パーティションを設定し、スキャン量を削減"
+      clustering:
+        strategy: "頻出フィルタカラム（tenant_id, event_type 等）でクラスタリング"
+        description: "クエリ性能とスキャンコストを最適化"
+      labels:
+        environment: "# TODO: 環境名"
+        service: "bigquery"
+        layer: "# TODO: raw | staging | intermediate | mart"
+    dependencies: []
+    iac_module: "infra/product/gcp/modules/bigquery-datasets"
+    validation_rules:
+      - rule: "全データセットが asia-northeast1 に配置されていること"
+        type: "static"
+        description: "Terraform plan で確認"
+      - rule: "ファクトテーブルに日付パーティションが設定されていること"
+        type: "runtime"
+        description: "INFORMATION_SCHEMA.TABLE_OPTIONS で確認"
+
+  # ====================================================================
+  # 2. AWS データ取り込み（S3 リレー）
+  # ====================================================================
+  - id: "gcp-data-ingestion-aws"
+    name: "AWS データ取り込み構成"
+    canonical_element_id: "product.data_ingestion"
+    vendor_service: "Cloud Storage, Cloud Storage Transfer Service, BigQuery"
+    configuration:
+      cloud_storage_bucket:
+        name: "# TODO: {org-prefix}-analytics-aws-relay"
+        location: "asia-northeast1"
+        storage_class: "STANDARD"
+        lifecycle_rules:
+          - action: "Delete"
+            condition:
+              age_days: 30
+              description: "取り込み済みデータを 30 日後に自動削除"
+        labels:
+          service: "data-ingestion"
+          source: "aws"
+      transfer_service:
+        - name: "rds-aurora-transfer"
+          description: "RDS/Aurora → S3 export → Cloud Storage → BigQuery"
+          source: "s3://# TODO: AWS S3 バケット名（RDS エクスポート先）"
+          destination: "gs://# TODO: Cloud Storage バケット名/rds/"
+          schedule: "毎日 02:00 JST"
+          authentication: "Workload Identity Federation（SA キー不要）"
+        - name: "s3-data-transfer"
+          description: "S3 データ → Cloud Storage → BigQuery"
+          source: "s3://# TODO: AWS S3 バケット名"
+          destination: "gs://# TODO: Cloud Storage バケット名/s3/"
+          schedule: "毎日 02:00 JST"
+          authentication: "Workload Identity Federation（SA キー不要）"
+        - name: "cloudwatch-transfer"
+          description: "CloudWatch → S3 export → Cloud Storage → BigQuery"
+          source: "s3://# TODO: CloudWatch ログ S3 エクスポート先"
+          destination: "gs://# TODO: Cloud Storage バケット名/cloudwatch/"
+          schedule: "毎日 03:00 JST"
+          authentication: "Workload Identity Federation（SA キー不要）"
+      bigquery_load_jobs:
+        - name: "rds-load"
+          source: "gs://# TODO: Cloud Storage バケット名/rds/*.parquet"
+          destination_table: "raw.# TODO: テーブル名"
+          format: "PARQUET"
+          write_disposition: "WRITE_APPEND"
+          schedule: "毎日 03:30 JST（Transfer Service 完了後）"
+        - name: "s3-load"
+          source: "gs://# TODO: Cloud Storage バケット名/s3/*.parquet"
+          destination_table: "raw.# TODO: テーブル名"
+          format: "PARQUET"
+          write_disposition: "WRITE_APPEND"
+          schedule: "毎日 03:30 JST"
+    dependencies:
+      - "gcp-bigquery-datasets"
+    iac_module: "infra/product/gcp/modules/data-ingestion-aws"
+    validation_rules:
+      - rule: "Cloud Storage バケットが asia-northeast1 にあること"
+        type: "static"
+        description: "Terraform plan で確認"
+      - rule: "Transfer Service が Workload Identity Federation を使用していること"
+        type: "static"
+        description: "SA キーが存在しないことを確認"
+
+  # ====================================================================
+  # 3. SaaS データ取り込み
+  # ====================================================================
+  - id: "gcp-data-ingestion-saas"
+    name: "SaaS データ取り込み構成"
+    canonical_element_id: "product.data_ingestion"
+    vendor_service: "BigQuery Data Transfer Service, BigQuery Export, Cloud Functions"
+    configuration:
+      ga4_export:
+        description: "GA4 → BigQuery Export（ネイティブ連携、無料）"
+        dataset: "raw"
+        frequency: "日次（自動）+ ストリーミング（リアルタイム）"
+        setup: "GA4 管理画面 → BigQuery リンク設定"
+        tables:
+          - "events_YYYYMMDD（日次）"
+          - "events_intraday_YYYYMMDD（ストリーミング）"
+      ads_transfer:
+        description: "Google Ads / Facebook Ads → BigQuery Data Transfer Service"
+        transfers:
+          - name: "google-ads-transfer"
+            source: "google_ads"
+            dataset: "raw"
+            schedule: "毎日 04:00 JST"
+            params:
+              customer_id: "# TODO: Google Ads カスタマー ID"
+          - name: "# TODO: facebook-ads-transfer（DTS でサポートされる場合）"
+            source: "# TODO: サードパーティ DTS コネクタまたは Cloud Functions"
+            dataset: "raw"
+            schedule: "毎日 04:00 JST"
+      api_functions:
+        - name: "slack-ingestion"
+          description: "Slack API → Cloud Functions → BigQuery Streaming Insert"
+          runtime: "python312"
+          trigger: "Cloud Scheduler（毎日 05:00 JST）"
+          destination_table: "raw.slack_messages"
+          memory: "256MB"
+          timeout: "300s"
+          region: "asia-northeast1"
+          environment_variables:
+            SLACK_TOKEN: "# TODO: Secret Manager から取得"
+            BQ_DATASET: "raw"
+        - name: "sentry-ingestion"
+          description: "Sentry API → Cloud Functions → BigQuery Streaming Insert"
+          runtime: "python312"
+          trigger: "Cloud Scheduler（毎日 05:00 JST）"
+          destination_table: "raw.sentry_issues"
+          memory: "256MB"
+          timeout: "300s"
+          region: "asia-northeast1"
+          environment_variables:
+            SENTRY_TOKEN: "# TODO: Secret Manager から取得"
+            BQ_DATASET: "raw"
+    dependencies:
+      - "gcp-bigquery-datasets"
+    iac_module: "infra/product/gcp/modules/data-ingestion-saas"
+    validation_rules:
+      - rule: "GA4 BigQuery Export が有効であること"
+        type: "runtime"
+        description: "GA4 管理画面で確認"
+      - rule: "Cloud Functions が asia-northeast1 にデプロイされていること"
+        type: "static"
+        description: "Terraform plan で確認"
+
+  # ====================================================================
+  # 4. dbt プロジェクト構成
+  # ====================================================================
+  - id: "gcp-dbt"
+    name: "dbt プロジェクト構成"
+    canonical_element_id: "product.data_transformation"
+    vendor_service: "dbt + BigQuery, GitHub Actions, Cloud Scheduler"
+    configuration:
+      dbt_project:
+        name: "# TODO: analytics-dbt"
+        version: "1.0.0"
+        profile: "bigquery"
+        model_paths: ["models"]
+        test_paths: ["tests"]
+        seed_paths: ["seeds"]
+        macro_paths: ["macros"]
+        model_layers:
+          - name: "staging"
+            path: "models/staging"
+            description: "ソースデータのクレンジング・型変換・リネーム"
+            materialization: "view"
+            naming: "stg_{source}__{table}"
+          - name: "intermediate"
+            path: "models/intermediate"
+            description: "ビジネスロジックの適用・テーブル結合"
+            materialization: "table"
+            naming: "int_{domain}__{description}"
+          - name: "mart"
+            path: "models/mart"
+            description: "BI / 分析向けの最終モデル"
+            materialization: "table"
+            naming: "mart_{domain}__{description}"
+        partition_by:
+          field: "event_date"
+          data_type: "date"
+          granularity: "day"
+        cluster_by: "# TODO: ドメインに応じたクラスタリングキー"
+      github_actions:
+        workflow_name: "dbt-daily-run"
+        trigger: "workflow_dispatch + schedule"
+        schedule: "cron(30 20 * * *)  # UTC 20:30 = JST 05:30"
+        steps:
+          - "checkout"
+          - "setup-python"
+          - "pip install dbt-bigquery"
+          - "dbt deps"
+          - "dbt seed --target production"
+          - "dbt run --target production"
+          - "dbt test --target production"
+          - "dbt docs generate"
+        authentication: "Workload Identity Federation（GitHub OIDC → GCP SA）"
+        service_account: "sa-dbt-runner@# TODO: プロジェクト ID"
+      cloud_scheduler:
+        - name: "dbt-daily-trigger"
+          description: "日次 dbt 実行トリガー"
+          schedule: "30 5 * * *"
+          time_zone: "Asia/Tokyo"
+          target: "GitHub Actions workflow_dispatch API"
+          retry_config:
+            retry_count: 3
+            min_backoff: "60s"
+    dependencies:
+      - "gcp-bigquery-datasets"
+      - "gcp-data-ingestion-aws"
+      - "gcp-data-ingestion-saas"
+    iac_module: "infra/product/gcp/modules/dbt"
+    validation_rules:
+      - rule: "dbt プロジェクトが staging / intermediate / mart の 3 層構成であること"
+        type: "static"
+        description: "ディレクトリ構成で確認"
+      - rule: "GitHub Actions が Workload Identity Federation で認証していること"
+        type: "static"
+        description: "ワークフロー定義で SA キー不使用を確認"
+
+  # ====================================================================
+  # 5. データセキュリティ
+  # ====================================================================
+  - id: "gcp-data-security"
+    name: "データセキュリティ構成"
+    canonical_element_id: "product.data_transformation"
+    vendor_service: "BigQuery Column-level Security, Dynamic Data Masking, Authorized Views"
+    configuration:
+      column_level_security:
+        taxonomy:
+          name: "# TODO: pii-taxonomy"
+          location: "asia-northeast1"
+          policy_tags:
+            - name: "high_sensitivity"
+              description: "氏名、メールアドレス、電話番号等の直接識別子"
+              masking_rule: "SHA256 ハッシュ"
+            - name: "medium_sensitivity"
+              description: "年齢、住所（都道府県）等の間接識別子"
+              masking_rule: "一般化（レンジ表示）"
+            - name: "low_sensitivity"
+              description: "内部 ID 等の準識別子"
+              masking_rule: "null 置換"
+        data_catalog:
+          description: "Data Catalog でポリシータグをカラムに関連付け"
+      dynamic_data_masking:
+        description: "BigQuery Dynamic Data Masking で閲覧者の権限に応じてマスキング"
+        roles:
+          - role: "roles/bigquery.maskedReader"
+            description: "マスキングされたデータのみ閲覧可能"
+            target_groups: ["sg-analysts@# TODO: ドメイン"]
+          - role: "roles/bigquery.unmaskedReader"
+            description: "マスキングなしで閲覧可能（データ管理者のみ）"
+            target_groups: ["sg-data-engineers@# TODO: ドメイン"]
+      authorized_views:
+        description: "BU 別のデータアクセス制御"
+        views:
+          - name: "# TODO: mart_sales_view"
+            source_dataset: "mart"
+            filter: "bu_code = 'SALES'"
+            authorized_dataset: "# TODO: mart_sales"
+          - name: "# TODO: mart_finance_view"
+            source_dataset: "mart"
+            filter: "bu_code = 'FINANCE'"
+            authorized_dataset: "# TODO: mart_finance"
+    dependencies:
+      - "gcp-bigquery-datasets"
+    iac_module: "infra/product/gcp/modules/data-security"
+    validation_rules:
+      - rule: "PII カラムにポリシータグが設定されていること"
+        type: "runtime"
+        description: "Data Catalog API で確認"
+      - rule: "Dynamic Data Masking が有効であること"
+        type: "runtime"
+        description: "BigQuery API でマスキングルールを確認"
+
+  # ====================================================================
+  # 6. BI 構成
+  # ====================================================================
+  - id: "gcp-bi"
+    name: "BI ツール構成"
+    canonical_element_id: "product.data_serving"
+    vendor_service: "Looker Studio, AMG (Amazon Managed Grafana)"
+    configuration:
+      looker_studio:
+        data_sources:
+          - name: "# TODO: mart データソース"
+            type: "BigQuery"
+            dataset: "mart"
+            project: "# TODO: analytics-production プロジェクト"
+            description: "BI ダッシュボード用のデータソース"
+        dashboards:
+          - name: "# TODO: 全社 KPI ダッシュボード"
+            description: "売上、ユーザー、コンバージョン等の全社 KPI"
+          - name: "# TODO: マーケティングダッシュボード"
+            description: "GA4 + 広告データの統合マーケティング分析"
+        caching:
+          description: "BI Engine リザベーションでダッシュボードの応答を高速化"
+          bi_engine_reservation: "# TODO: GB 数を設定（推奨: 頻出クエリのデータ量に基づく）"
+      amg:
+        data_source:
+          type: "BigQuery"
+          description: "プラットフォーム運用メトリクス用（AMG BigQuery データソースプラグイン）"
+          project: "# TODO: analytics-production プロジェクト"
+          dataset: "mart"
+        dashboards:
+          - name: "# TODO: データパイプライン運用ダッシュボード"
+            description: "取り込み遅延、dbt 成功率、クエリコスト等のプラットフォームメトリクス"
+    dependencies:
+      - "gcp-bigquery-datasets"
+      - "gcp-data-security"
+    iac_module: "infra/product/gcp/modules/bi"
+    validation_rules:
+      - rule: "Looker Studio データソースが mart データセットに接続されていること"
+        type: "runtime"
+        description: "Looker Studio 設定画面で確認"
+      - rule: "Authorized Views 経由のアクセスのみが許可されていること"
+        type: "runtime"
+        description: "BigQuery IAM で確認"

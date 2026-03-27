@@ -1,0 +1,162 @@
+schema_version: "1.0"
+artifact_type: "workload_model"
+skill_type: "product"
+artifact_id: "product-workload-analytics"
+title: "全社データ分析基盤 ワークロードモデル"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP Architecture Framework"
+decision_refs:
+  - "product-decision-dbt-elt"
+  - "product-decision-data-ingestion"
+inputs_ref:
+  - "product-input-analytics"
+  - "foundation-context"
+  - "shared-platform-context"
+
+workload_characteristics:
+  workload_type: "data_pipeline"
+  description: |
+    全社のデータを BigQuery に集約し、BI/アドホック分析/ML データ準備に活用する
+    データ分析基盤。AWS 上のトランザクションデータと外部 SaaS データを BigQuery に
+    ELT パターンで取り込み、dbt で変換・モデリングする。
+
+  availability_target:
+    sla: "99.9%"
+    description: "BigQuery SLA に準拠。データ遅延は最大 24 時間許容（日次バッチ）"
+    failover: "BigQuery はマネージドサービスのため GCP 側で冗長化済み"
+
+  latency_sensitivity:
+    category: "batch"
+    description: "バッチ処理がメイン。クエリ応答は秒〜分オーダーで許容"
+    bi_dashboard_target: "ダッシュボード表示 10 秒以内"
+
+  data_sensitivity:
+    classification: "confidential"
+    pii: true
+    pii_handling: "Column-level Security + Dynamic Data Masking"
+    encryption: "Google マネージドキー（デフォルト）"
+    data_residency: "asia-northeast1"
+    compliance: ["SOC2"]
+
+  traffic_pattern:
+    type: "scheduled"
+    description: "日次バッチ取り込み（深夜）+ 営業時間中の BI クエリ + 随時アドホック分析"
+    peak: "月初（月次レポート生成）、四半期末（経営レポート）"
+
+  consistency_needs:
+    type: "eventual"
+    description: "データ取り込みは日次バッチのため最大 24 時間の遅延を許容。BigQuery 内のクエリは強整合性"
+
+  recovery_target:
+    rpo: "24 時間（日次バッチ間隔）"
+    rto: "4 時間"
+    backup: "BigQuery タイムトラベル（7 日間）+ Cloud Storage バックアップ"
+    dr: "BigQuery はリージョナルデータセットのため、リージョン障害時は再取り込みで復旧"
+
+  observability_needs:
+    metrics: "BigQuery ジョブメトリクス、スロット使用量、クエリコスト"
+    logs: "Data Access Logs、dbt 実行ログ"
+    sli:
+      - "データ取り込み完了時刻の遅延"
+      - "dbt モデルビルド成功率"
+      - "BI ダッシュボード応答時間"
+    slo:
+      - "日次データ取り込み: 午前 6 時までに完了（99%）"
+      - "dbt ビルド成功率: 99.5%"
+    alerting: "取り込み遅延、dbt 失敗、クエリコスト閾値超過"
+
+  cost_posture:
+    strategy: "balanced"
+    bigquery_pricing: "on_demand"
+    optimization:
+      - "パーティション分割テーブルでスキャン量を削減"
+      - "クラスタリングでクエリ性能とコストを最適化"
+      - "マテリアライズドビューで繰り返しクエリのコストを削減"
+      - "BI Engine で BI ダッシュボードの応答を高速化"
+      - "利用量が安定したら Standard エディション（スロット予約）への移行を検討"
+
+elements:
+  # ====================================================================
+  # データ取り込み層
+  # ====================================================================
+  - id: "product.data_ingestion"
+    name: "データ取り込み"
+    category: "ingestion"
+    description: "AWS / SaaS からのデータを BigQuery に取り込む"
+    requirements:
+      - id: "product.data_ingestion.req-01"
+        description: "AWS RDS/Aurora のデータを日次バッチで BigQuery に取り込む"
+        priority: "must"
+        rationale: "トランザクションデータは分析の基盤"
+      - id: "product.data_ingestion.req-02"
+        description: "AWS S3 のデータを日次バッチで BigQuery に取り込む"
+        priority: "must"
+        rationale: "ログ・ファイルデータの分析"
+      - id: "product.data_ingestion.req-03"
+        description: "GA4 データを BigQuery Export でネイティブ連携する"
+        priority: "must"
+        rationale: "GA4 の BigQuery Export はゼロコストでリアルタイムデータを提供"
+      - id: "product.data_ingestion.req-04"
+        description: "広告プラットフォームデータを BigQuery Data Transfer Service で連携する"
+        priority: "must"
+        rationale: "マネージドサービスで運用負荷を最小化"
+      - id: "product.data_ingestion.req-05"
+        description: "Slack / Sentry データを Cloud Functions 経由で取り込む"
+        priority: "should"
+        rationale: "API ベースの取り込みは Cloud Functions が最適（サーバーレス、低コスト）"
+      - id: "product.data_ingestion.req-06"
+        description: "CloudWatch Logs/メトリクスを日次バッチで BigQuery に取り込む"
+        priority: "should"
+        rationale: "インフラメトリクスと分析データの統合"
+    source_refs:
+      - "GCP Architecture Framework"
+
+  # ====================================================================
+  # データ変換層
+  # ====================================================================
+  - id: "product.data_transformation"
+    name: "データ変換"
+    category: "transformation"
+    description: "dbt による ELT パターンのデータ変換・モデリング"
+    requirements:
+      - id: "product.data_transformation.req-01"
+        description: "dbt で staging / intermediate / mart の 3 層モデルを構築する"
+        priority: "must"
+        rationale: "データモデリングのベストプラクティス。再利用性と追跡可能性を確保"
+      - id: "product.data_transformation.req-02"
+        description: "dbt テストで品質チェック（not_null, unique, accepted_values 等）を実施する"
+        priority: "must"
+        rationale: "データ品質の自動検証。信頼できるデータの提供"
+      - id: "product.data_transformation.req-03"
+        description: "dbt のスケジュール実行を GitHub Actions + Cloud Scheduler で自動化する"
+        priority: "must"
+        rationale: "日次バッチの自動化。手動実行の排除"
+      - id: "product.data_transformation.req-04"
+        description: "PII カラムに Column-level Security と Dynamic Data Masking を適用する"
+        priority: "must"
+        rationale: "SOC2 要件。個人情報の保護"
+    source_refs: []
+
+  # ====================================================================
+  # データ提供層
+  # ====================================================================
+  - id: "product.data_serving"
+    name: "データ提供"
+    category: "serving"
+    description: "BI ツールと分析者へのデータ提供"
+    requirements:
+      - id: "product.data_serving.req-01"
+        description: "Looker Studio から BigQuery に直接接続し、ダッシュボードを提供する"
+        priority: "must"
+        rationale: "BI ダッシュボードは全社のデータ活用の入口"
+      - id: "product.data_serving.req-02"
+        description: "Authorized Views でテナント（BU）ごとのデータアクセスを制御する"
+        priority: "must"
+        rationale: "BU 間のデータ分離。経理データを営業が見えないようにする等"
+      - id: "product.data_serving.req-03"
+        description: "BigQuery ML でデータサイエンティストが SQL ベースの ML モデルを構築できるようにする"
+        priority: "should"
+        rationale: "ML のハードルを下げ、データ活用を促進する"
+    source_refs: []

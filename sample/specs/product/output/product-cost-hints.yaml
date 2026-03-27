@@ -1,0 +1,180 @@
+schema_version: "1.0"
+artifact_type: "cost_optimization_hints"
+skill_type: "product"
+artifact_id: "product-cost-hints"
+title: "全社データ分析基盤 コスト最適化ヒント"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP BigQuery 料金ドキュメント"
+  - "GCP Cloud Storage 料金ドキュメント"
+  - "GCP Data Transfer 料金ドキュメント"
+decision_refs:
+  - "product-decision-dbt-elt"
+  - "product-decision-data-ingestion"
+inputs_ref:
+  - "product-workload-analytics"
+  - "product-impl-gcp"
+
+hints:
+  # ====================================================================
+  # クエリコスト削減
+  # ====================================================================
+  - id: "hint-partitioning"
+    category: "query_cost"
+    name: "日付パーティション分割"
+    description: |
+      全ファクトテーブルに日付パーティションを設定し、クエリのスキャン量を削減する。
+      WHERE 句で日付範囲を指定することで、必要なパーティションのみスキャンする。
+    impact: "高（スキャン量を 90% 以上削減可能なケースが多い）"
+    implementation: |
+      - dbt モデルで partition_by を設定: {{ config(partition_by={'field': 'event_date', 'data_type': 'date'}) }}
+      - 全クエリで日付フィルタを必須化（BI ツールのデフォルトフィルタ設定）
+    priority: "must"
+
+  - id: "hint-clustering"
+    category: "query_cost"
+    name: "クラスタリング"
+    description: |
+      頻出フィルタカラム（tenant_id, event_type, user_id 等）でテーブルをクラスタリングする。
+      パーティション内のデータを整理し、スキャン効率を向上させる。
+    impact: "中（クエリパターンに依存。頻出フィルタがある場合は効果大）"
+    implementation: |
+      - dbt モデルで cluster_by を設定: {{ config(cluster_by=['tenant_id', 'event_type']) }}
+      - クラスタキーは最大 4 つまで。フィルタ頻度順に指定
+    priority: "must"
+
+  - id: "hint-query-optimization"
+    category: "query_cost"
+    name: "クエリ最適化"
+    description: |
+      クエリの書き方でコストを削減する基本的なプラクティス。
+    impact: "中"
+    implementation: |
+      - SELECT * を避け、必要なカラムのみ指定する
+      - LIMIT を使用して結果セットを制限する（ただしスキャン量は変わらない場合がある）
+      - APPROX_COUNT_DISTINCT 等の近似関数を活用する（完全な精度が不要な場合）
+      - WITH 句（CTE）を活用し、中間結果を明確にする
+      - テーブルデコレータで過去のスナップショットを避ける（タイムトラベルは課金対象）
+    priority: "should"
+
+  # ====================================================================
+  # BI / ダッシュボード高速化
+  # ====================================================================
+  - id: "hint-materialized-views"
+    category: "bi_acceleration"
+    name: "マテリアライズドビュー"
+    description: |
+      繰り返し実行される BI クエリに対してマテリアライズドビューを作成する。
+      BigQuery が自動的にビューを最新に保つため、運用負荷なしでクエリコストを削減できる。
+    impact: "高（繰り返しクエリのコストを大幅に削減）"
+    implementation: |
+      - Looker Studio で頻出するクエリパターンを特定
+      - 集計クエリ（SUM, COUNT, AVG 等）をマテリアライズドビュー化
+      - BigQuery が自動メンテナンスするため、手動更新は不要
+    priority: "should"
+
+  - id: "hint-bi-engine"
+    category: "bi_acceleration"
+    name: "BI Engine リザベーション"
+    description: |
+      Looker Studio ダッシュボードの応答を高速化するため、BI Engine のメモリリザベーションを設定する。
+      頻出クエリのデータをインメモリキャッシュし、サブ秒の応答を実現する。
+    impact: "高（ダッシュボード応答時間を 10 秒以内に短縮）"
+    implementation: |
+      - BI Engine リザベーションを作成（リージョン: asia-northeast1）
+      - 推奨サイズ: # TODO: 頻出クエリのデータ量に基づいて決定（初期値: 1 GB）
+      - Looker Studio のクエリが自動的に BI Engine を利用
+    cost: "BI Engine リザベーション料金（$36.25/GB/月 @ asia-northeast1）"
+    priority: "should"
+
+  # ====================================================================
+  # ストレージコスト最適化
+  # ====================================================================
+  - id: "hint-long-term-storage"
+    category: "storage_cost"
+    name: "長期保存ストレージ料金"
+    description: |
+      BigQuery は 90 日間編集されていないテーブル/パーティションを自動的に長期保存ストレージに移行する。
+      長期保存ストレージ料金はアクティブストレージの約 50% 割引。
+    impact: "中（ストレージコストを自動的に約 50% 削減）"
+    implementation: |
+      - 自動適用のためアクション不要
+      - ただし、不要な UPDATE/INSERT を避けることで長期保存の適用を促進
+      - パーティション単位で適用されるため、日付パーティションとの組み合わせが効果的
+    priority: "must"
+
+  - id: "hint-storage-cleanup"
+    category: "storage_cost"
+    name: "不要データの定期削除"
+    description: |
+      raw データセットの古いデータ、staging/intermediate の中間テーブルを定期的に削除する。
+    impact: "低〜中（データ量に依存）"
+    implementation: |
+      - raw データセットにパーティション有効期限を設定（例: 365 日）
+      - staging/intermediate は dbt の ephemeral または view マテリアライゼーションを活用
+      - Cloud Storage リレーバケットのライフサイクルルール（30 日で自動削除）
+    priority: "should"
+
+  # ====================================================================
+  # エディション移行の判断
+  # ====================================================================
+  - id: "hint-edition-migration"
+    category: "pricing_model"
+    name: "Standard エディション（スロット予約）への移行判断"
+    description: |
+      オンデマンド課金から Standard エディション（スロット予約）への移行の損益分岐点分析。
+      月間コストが一定額を超えたら、スロット予約の方が安価になる。
+    impact: "高（コストが安定し、予測可能になる）"
+    implementation: |
+      損益分岐点の目安:
+      - オンデマンド: $6.25/TB（asia-northeast1）
+      - Standard エディション 100 スロット: 約 $2,080/月（asia-northeast1）
+      - 損益分岐点: 月間スキャン量 ≈ 333 TB、または月間コスト ≈ $2,000
+
+      移行の判断基準:
+      1. 月間オンデマンドコストが 3 ヶ月連続で $2,000 を超える場合
+      2. INFORMATION_SCHEMA.JOBS_TIMELINE でスロット使用量を分析
+      3. Autoscaler（Standard エディション）で柔軟なスロット割り当てを活用
+
+      段階的移行:
+      1. まずオンデマンドで利用パターンを把握（3〜6 ヶ月）
+      2. INFORMATION_SCHEMA でコスト分析を実施
+      3. 損益分岐点を超えたら Standard エディション 100 スロットから開始
+      4. Autoscaler の baseline/max スロットを調整
+    priority: "should"
+    review_trigger: "月間オンデマンドコストが $2,000 を超えた時点"
+
+  # ====================================================================
+  # データ転送コスト
+  # ====================================================================
+  - id: "hint-data-transfer"
+    category: "transfer_cost"
+    name: "クロスリージョン転送の最小化"
+    description: |
+      GCP 内および AWS-GCP 間のデータ転送コストを最小化する。
+    impact: "中（データ量に依存）"
+    implementation: |
+      - BigQuery データセットと Cloud Storage バケットを同一リージョン（asia-northeast1）に配置
+      - AWS S3 も同一リージョン（ap-northeast-1）を使用し、リージョン間の距離を最小化
+      - Cloud Storage Transfer Service はリージョン間転送料金が発生するため、転送頻度を最適化
+      - GA4 BigQuery Export は無料（Google 内部転送）
+      - BigQuery Data Transfer Service のデータ転送は無料（転送サービスの利用料のみ）
+    priority: "must"
+
+  # ====================================================================
+  # コスト監視
+  # ====================================================================
+  - id: "hint-cost-monitoring"
+    category: "cost_governance"
+    name: "コスト監視と予算アラート"
+    description: |
+      BigQuery コストの可視化と予算管理のための監視体制を構築する。
+    impact: "高（予期しないコスト増加を早期検知）"
+    implementation: |
+      - Cloud Billing Budget: プロジェクトレベルで月次予算を設定（50%, 80%, 100% でアラート）
+      - INFORMATION_SCHEMA.JOBS: 日次コストレポートを自動生成
+      - カスタムクォータ: BigQuery のカスタムコスト制御（1 日あたりの最大バイト数）
+      - AMG ダッシュボード: 日次/週次のコスト推移と高コストクエリの可視化
+      - ラベルベースのコスト配分: データセット・テーブルにラベルを付与し、ドメイン別コストを把握
+    priority: "must"

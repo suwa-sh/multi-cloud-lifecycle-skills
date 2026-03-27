@@ -1,0 +1,85 @@
+schema_version: "1.0"
+artifact_type: "vendor_mapping"
+skill_type: "product"
+artifact_id: "product-mapping-gcp"
+title: "全社データ分析基盤 GCP ベンダーマッピング"
+status: "draft"
+generated_at: "2026-03-28T00:00:00+09:00"
+source_refs:
+  - "GCP BigQuery ドキュメント"
+  - "GCP Data Transfer Service ドキュメント"
+  - "GCP Cloud Storage Transfer Service ドキュメント"
+decision_refs:
+  - "product-decision-dbt-elt"
+  - "product-decision-data-ingestion"
+inputs_ref:
+  - "product-workload-analytics"
+  - "foundation-context"
+  - "shared-platform-context"
+
+vendor: "gcp"
+canonical_ref: "product-workload-analytics"
+
+mappings:
+  # ====================================================================
+  # データ取り込み層
+  # ====================================================================
+  - canonical_element_id: "product.data_ingestion"
+    vendor_service: "BigQuery Data Transfer Service, Cloud Storage Transfer Service, Cloud Functions, Workload Identity Federation"
+    vendor_feature: "マルチパターン取り込み（ネイティブ連携 + S3 リレー + API 関数）"
+    fidelity: "exact"
+    configuration_notes: |
+      取り込みパターン一覧:
+      - RDS/Aurora → S3 export → Cloud Storage → BigQuery Load Job（Workload Identity Federation 経由）
+      - S3 → Cloud Storage Transfer Service → BigQuery Load Job
+      - GA4 → BigQuery Export（ネイティブ連携、無料）
+      - Ads → BigQuery Data Transfer Service
+      - Slack/Sentry → Cloud Functions → BigQuery Streaming Insert
+      - CloudWatch → S3 export → Cloud Storage Transfer Service → BigQuery
+    gap_description: ""
+    alternatives:
+      - "Dataflow（ストリーミング処理が必要な場合）"
+      - "Pub/Sub + Dataflow（リアルタイム取り込みが必要な場合）"
+    source_refs:
+      - "GCP BigQuery Data Transfer Service ドキュメント"
+      - "GCP Cloud Storage Transfer Service ドキュメント"
+
+  # ====================================================================
+  # データ変換層
+  # ====================================================================
+  - canonical_element_id: "product.data_transformation"
+    vendor_service: "dbt + BigQuery, Cloud Scheduler, GitHub Actions"
+    vendor_feature: "ELT パターンのデータ変換・モデリング"
+    fidelity: "exact"
+    configuration_notes: |
+      - dbt は GitHub Actions または Cloud Build 内で実行
+      - Cloud Scheduler が dbt の定時実行をトリガー
+      - Column-level Security + Dynamic Data Masking で PII を保護
+      - dbt テスト（not_null, unique, accepted_values 等）でデータ品質を担保
+    gap_description: ""
+    alternatives:
+      - "Dataflow（Apache Beam ベースの変換。学習コストが高い）"
+      - "Cloud Composer（Airflow ベースのオーケストレーション。dbt の実行基盤としてはオーバースペック）"
+    source_refs:
+      - "dbt BigQuery adapter ドキュメント"
+      - "GCP Cloud Scheduler ドキュメント"
+
+  # ====================================================================
+  # データ提供層
+  # ====================================================================
+  - canonical_element_id: "product.data_serving"
+    vendor_service: "Looker Studio, BigQuery Authorized Views, BigQuery ML, AMG (Grafana)"
+    vendor_feature: "BI ダッシュボード、データアクセス制御、SQL ベース ML"
+    fidelity: "exact"
+    configuration_notes: |
+      - Looker Studio: BigQuery への直接接続でダッシュボードを提供
+      - Authorized Views: BU 別のデータアクセス制御を実現
+      - BigQuery ML: SQL ベースの ML モデル構築で分析者のハードルを低減
+      - AMG (Amazon Managed Grafana): プラットフォーム運用メトリクスのダッシュボード
+    gap_description: ""
+    alternatives:
+      - "Looker（エンタープライズ BI。コストが高い）"
+      - "Metabase（OSS BI。運用負荷がある）"
+    source_refs:
+      - "Looker Studio ドキュメント"
+      - "BigQuery Authorized Views ドキュメント"
