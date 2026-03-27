@@ -4,6 +4,60 @@ AWS / Azure / GCP のマルチクラウド基盤設計を支援する Claude Cod
 
 ベンダー中立の正規モデルから、ベンダー別マッピング、実装仕様、IaC スケルトンまでを一貫して生成します。
 
+## コンセプト
+
+**ベンダーロックインを回避しつつ、各ベンダーのベストプラクティスを踏襲したインフラ設計を、AI エージェントとの対話で構築する。**
+
+クラウドインフラの設計には 2 つの矛盾する要求があります。「特定ベンダーに依存しない設計にしたい」と「各ベンダーが推奨するベストプラクティスに従いたい」です。本スキル群は、この矛盾を 4 層の設計パイプラインで解決します。
+
+```mermaid
+graph LR
+  subgraph sources["1. ベンダーソース"]
+    aws["AWS ガイダンス"]
+    azure["Azure ガイダンス"]
+    gcp["GCP ガイダンス"]
+  end
+
+  subgraph canonical["2. Canonical Model"]
+    cap["ベンダー中立の<br/>capability 定義"]
+  end
+
+  subgraph mapping["3. Vendor Mapping"]
+    mapAws["AWS マッピング<br/>+ fidelity 評価"]
+    mapAzure["Azure マッピング"]
+    mapGcp["GCP マッピング"]
+  end
+
+  subgraph impl["4. 実装 Artifacts"]
+    spec["実装仕様"]
+    iac["IaC スケルトン"]
+    doc["アーキテクチャ MD"]
+  end
+
+  aws --> cap
+  azure --> cap
+  gcp --> cap
+  cap --> mapAws
+  cap --> mapAzure
+  cap --> mapGcp
+  mapAws --> spec
+  mapAzure --> spec
+  mapGcp --> spec
+  spec --> iac
+  spec --> doc
+```
+
+| 層 | 役割 | ロックイン回避 | ベストプラクティス踏襲 |
+| --- | --- | --- | --- |
+| **ベンダーソース** | 公式ドキュメントを自動収集・保存 | -- | 各ベンダーの最新推奨事項を設計根拠にする |
+| **Canonical Model** | ベンダー中立の capability として要件を表現 | 特定ベンダーの用語・概念に依存しない | ソースから抽出したベストプラクティスを正規化して反映 |
+| **Vendor Mapping** | canonical を各ベンダーサービスに再投影 | fidelity（exact/partial/workaround/gap）で適合度を可視化。ギャップを明示 | ベンダー推奨のサービス選定・構成に従う |
+| **実装 Artifacts** | IaC スケルトン、適合性レポート | canonical への適合性を検証。ベンダー変更時は mapping のみ差し替え | ベンダー固有の設定値・モジュール構成を反映 |
+
+この 4 層モデルにより、**クラウドを追加・変更する場合は Vendor Mapping と Implementation Artifacts のみを差し替えれば済み**、Canonical Model（設計の本質）は変わりません。実際にこのサンプルでは、途中で GCP（BigQuery）を追加した際に既存の AWS / Azure 設計を壊さずに拡張できています。
+
+設計プロセス自体は Claude Code との対話で進みます。スキルが選択肢付きのヒアリングを行い、回答に基づいて全 artifact を自動生成します。設計者はアーキテクチャの意思決定に集中でき、YAML テンプレートの記述やベンダー間の差異の調査はスキルが担います。
+
 ## 前提条件
 
 - [Claude Code](https://claude.ai/code)
