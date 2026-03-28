@@ -239,8 +239,6 @@ your-project/
 
 - **YAML が全 artifact の正本**。Markdown は常に派生生成物
 - 全 YAML に共通メタデータを含む（`schema_version`, `artifact_type`, `skill_type`, `artifact_id`, `title`, `status`, `generated_at` 等）
-- 人間向けテキスト（title, description, rationale 等）は日本語
-- キー名、artifact_id、ファイル名は英語
 - IaC のプレースホルダー値には `# TODO:` コメント付き
 
 ## 出力サンプル
