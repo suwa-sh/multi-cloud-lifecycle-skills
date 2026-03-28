@@ -1,37 +1,42 @@
 # multi-cloud-lifecycle-skills
 
-AWS / Azure / GCP のマルチクラウド基盤設計を支援する Claude Code スキル群。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-suwa--sh%2Fmulti--cloud--lifecycle--skills-blue.svg?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTEuMzMzMSA0LjY2NjY3QzExLjMzMzEgNi4xMzk0MyA5LjEzOTQzIDcuMzMzMzMgNy45OTk3NiA3LjMzMzMzQzYuODYwMSA3LjMzMzMzIDQuNjY2NDMgNi4xMzk0MyA0LjY2NjQzIDQuNjY2NjdDNC42NjY0MyAzLjE5MzkxIDYuODYwMSAyIDcuOTk5NzYgMkM5LjEzOTQzIDIgMTEuMzMzMSAzLjE5MzkxIDExLjMzMzEgNC42NjY2N1oiIGZpbGw9IndoaXRlIi8+PHBhdGggZD0iTTE0LjY2NjMgMTEuMzMzM0MxNC42NjYzIDEyLjgwNjEgMTIuNDcyNyAxNCAxMS4zMzMgMTRDMTAuMTkzMyAxNCA3Ljk5OTY3IDEyLjgwNjEgNy45OTk2NyAxMS4zMzMzQzcuOTk5NjcgOS44NjA1NyAxMC4xOTMzIDguNjY2NjcgMTEuMzMzIDguNjY2NjdDMTIuNDcyNyA4LjY2NjY3IDE0LjY2NjMgOS44NjA1NyAxNC42NjYzIDExLjMzMzNaIiBmaWxsPSJ3aGl0ZSIvPjxwYXRoIGQ9Ik04LjAwMDMzIDExLjMzMzNDOC4wMDAzMyAxMi44MDYxIDUuODA2NjcgMTQgNC42NjcgMTRDMy41MjczMyAxNCAxLjMzMzY3IDEyLjgwNjEgMS4zMzM2NyAxMS4zMzMzQzEuMzMzNjcgOS44NjA1NyAzLjUyNzMzIDguNjY2NjcgNC42NjcgOC42NjY2N0M1LjgwNjY3IDguNjY2NjcgOC4wMDAzMyA5Ljg2MDU3IDguMDAwMzMgMTEuMzMzM1oiIGZpbGw9IndoaXRlIi8+PC9zdmc+)](https://deepwiki.com/suwa-sh/multi-cloud-lifecycle-skills)
 
-ベンダー中立の正規モデルから、ベンダー別マッピング、実装仕様、IaC スケルトンまでを一貫して生成します。
+[ [日本語](README.ja.md) ]
 
-## コンセプト
+Claude Code skill set for multi-cloud infrastructure design across AWS, Azure, and GCP.
 
-**ベンダーロックインを回避しつつ、各ベンダーのベストプラクティスを踏襲したインフラ設計を、AI エージェントとの対話で構築する。**
+Generates vendor-neutral canonical models, vendor-specific mappings, implementation specs, and IaC skeletons through a consistent design pipeline.
 
-クラウドインフラの設計には 2 つの矛盾する要求があります。「特定ベンダーに依存しない設計にしたい」と「各ベンダーが推奨するベストプラクティスに従いたい」です。本スキル群は、この矛盾を 4 層の設計パイプラインで解決します。
+## Concept
+
+**Build infrastructure designs through AI agent conversations — avoiding vendor lock-in while following each vendor's best practices.**
+
+Cloud infrastructure design faces two contradictory requirements: "design without depending on a specific vendor" and "follow each vendor's recommended best practices." This skill set resolves this contradiction through a 4-layer design pipeline.
 
 ```mermaid
 graph LR
-  subgraph sources["1. ベンダーソース"]
-    aws["AWS ガイダンス"]
-    azure["Azure ガイダンス"]
-    gcp["GCP ガイダンス"]
+  subgraph sources["1. Vendor Sources"]
+    aws["AWS Guidance"]
+    azure["Azure Guidance"]
+    gcp["GCP Guidance"]
   end
 
   subgraph canonical["2. Canonical Model"]
-    cap["ベンダー中立の<br/>capability 定義"]
+    cap["Vendor-neutral<br/>capability definitions"]
   end
 
   subgraph mapping["3. Vendor Mapping"]
-    mapAws["AWS マッピング<br/>+ fidelity 評価"]
-    mapAzure["Azure マッピング"]
-    mapGcp["GCP マッピング"]
+    mapAws["AWS Mapping<br/>+ fidelity scoring"]
+    mapAzure["Azure Mapping"]
+    mapGcp["GCP Mapping"]
   end
 
-  subgraph impl["4. 実装 Artifacts"]
-    spec["実装仕様"]
-    iac["IaC スケルトン"]
-    doc["アーキテクチャ MD"]
+  subgraph impl["4. Implementation Artifacts"]
+    spec["Impl Specs"]
+    iac["IaC Skeletons"]
+    doc["Architecture MD"]
   end
 
   aws --> cap
@@ -47,146 +52,146 @@ graph LR
   spec --> doc
 ```
 
-| 層 | 役割 | ロックイン回避 | ベストプラクティス踏襲 |
+| Layer | Role | Lock-in Avoidance | Best Practice Adherence |
 | --- | --- | --- | --- |
-| **ベンダーソース** | 公式ドキュメントを自動収集・保存 | -- | 各ベンダーの最新推奨事項を設計根拠にする |
-| **Canonical Model** | ベンダー中立の capability として要件を表現 | 特定ベンダーの用語・概念に依存しない | ソースから抽出したベストプラクティスを正規化して反映 |
-| **Vendor Mapping** | canonical を各ベンダーサービスに再投影 | fidelity（exact/partial/workaround/gap）で適合度を可視化。ギャップを明示 | ベンダー推奨のサービス選定・構成に従う |
-| **実装 Artifacts** | IaC スケルトン、適合性レポート | canonical への適合性を検証。ベンダー変更時は mapping のみ差し替え | ベンダー固有の設定値・モジュール構成を反映 |
+| **Vendor Sources** | Auto-collect and store official documentation | -- | Uses each vendor's latest recommendations as design rationale |
+| **Canonical Model** | Express requirements as vendor-neutral capabilities | No dependency on vendor-specific terminology or concepts | Normalizes and reflects best practices extracted from sources |
+| **Vendor Mapping** | Re-project canonical to each vendor's services | Visualizes fit with fidelity (exact/partial/workaround/gap). Makes gaps explicit | Follows vendor-recommended service selection and configuration |
+| **Implementation Artifacts** | IaC skeletons, conformance reports | Verifies conformance to canonical. Only swap mapping when changing vendors | Reflects vendor-specific settings and module configurations |
 
-この 4 層モデルにより、**クラウドを追加・変更する場合は Vendor Mapping と Implementation Artifacts のみを差し替えれば済み**、Canonical Model（設計の本質）は変わりません。実際にこのサンプルでは、途中で GCP（BigQuery）を追加した際に既存の AWS / Azure 設計を壊さずに拡張できています。
+With this 4-layer model, **when adding or changing clouds, only the Vendor Mapping and Implementation Artifacts need to be swapped** — the Canonical Model (the essence of the design) remains unchanged. In the included sample, GCP (BigQuery) was added mid-project without breaking the existing AWS / Azure designs.
 
-設計プロセス自体は Claude Code との対話で進みます。スキルが選択肢付きのヒアリングを行い、回答に基づいて全 artifact を自動生成します。設計者はアーキテクチャの意思決定に集中でき、YAML テンプレートの記述やベンダー間の差異の調査はスキルが担います。
+The design process itself proceeds through conversation with Claude Code. Skills conduct structured interviews with choices, and auto-generate all artifacts based on answers. Designers can focus on architectural decisions while the skills handle YAML template authoring and cross-vendor difference research.
 
-## 前提条件
+## Prerequisites
 
 - [Claude Code](https://claude.ai/code)
-- [pandoc](https://pandoc.org/)（ベンダーソースの HTML → Markdown 変換に使用）
+- [pandoc](https://pandoc.org/) (used for vendor source HTML → Markdown conversion)
 
 ```bash
 # macOS
 brew install pandoc
 ```
 
-## インストール
+## Installation
 
 ```bash
 git clone https://github.com/suwa-sh/multi-cloud-lifecycle-skills.git
 cd multi-cloud-lifecycle-skills
 ```
 
-### グローバルインストール（全プロジェクトで利用）
+### Global Installation (available across all projects)
 
 ```bash
 ./install.sh
 ```
 
-`~/.claude/skills/` にシンボリックリンクが作成され、どのプロジェクトでもスキルが利用可能になります。
+Creates symlinks in `~/.claude/skills/`, making skills available in any project.
 
-### プロジェクト固有インストール
+### Project-specific Installation
 
 ```bash
 ./install.sh /path/to/your-project
 ```
 
-`<project>/.claude/skills/` にシンボリックリンクが作成され、そのプロジェクトでのみスキルが利用可能になります。
+Creates symlinks in `<project>/.claude/skills/`, making skills available only in that project.
 
-## スキル一覧
+## Skills
 
-3つの設計スキルが階層構造で連携します。上位スキルの出力が下位スキルの入力になります。
+Three design skills work in a hierarchical structure. Each upper skill's output becomes the lower skill's input.
 
 ```
-mcl-foundation-design          最上位 — ガードレールを定義
+mcl-foundation-design          Top — defines guardrails
     ↓ foundation-context.yaml
-mcl-shared-platform-design     中間 — 共有サービスを定義
+mcl-shared-platform-design     Middle — defines shared services
     ↓ shared-platform-context.yaml
-mcl-product-design             最下位 — 個別ワークロードを設計
+mcl-product-design             Bottom — designs individual workloads
 ```
 
-| スキル | 対象 | 主な出力 |
+| Skill | Scope | Key Outputs |
 | --- | --- | --- |
-| **mcl-foundation-design** | ランディングゾーン（組織構造、ID、ネットワーク、ポリシー、ログ、課金、セキュリティ） | canonical model, vendor mapping, decision records, IaC skeletons, foundation context |
-| **mcl-shared-platform-design** | 共有プラットフォーム（Kubernetes、監視、CI/CD、シークレット管理） | canonical model, service catalog, vendor mapping, IaC skeletons, shared-platform context |
-| **mcl-product-design** | 個別ワークロード（コンピュート、DB、キャッシュ、メッセージング） | workload model, vendor mapping, observability spec, cost hints, IaC skeletons |
-| **mcl-common** | 3スキル共通のテンプレート・スキーマ・ルール（直接トリガー不要） | — |
+| **mcl-foundation-design** | Landing zone (org structure, identity, network, policy, logging, billing, security) | canonical model, vendor mapping, decision records, IaC skeletons, foundation context |
+| **mcl-shared-platform-design** | Shared platform (Kubernetes, monitoring, CI/CD, secret management) | canonical model, service catalog, vendor mapping, IaC skeletons, shared-platform context |
+| **mcl-product-design** | Individual workloads (compute, DB, cache, messaging) | workload model, vendor mapping, observability spec, cost hints, IaC skeletons |
+| **mcl-common** | Shared templates, schemas, and rules for all 3 skills (not directly triggered) | — |
 
-## 使い方
+## Usage
 
-### 基本的な流れ
+### Basic Flow
 
-Claude Code で対話的に設計を依頼します。スキルは自動的にトリガーされます。
-
-```
-# 1. Foundation（最初に実行）
-「AWS と Azure を対象に、3つのBUで foundation 設計をしてください」
-
-# 2. Shared Platform（foundation の後に実行）
-「EKS/AKS ベースの共有プラットフォームを設計してください」
-
-# 3. Product（foundation + shared platform の後に実行）
-「EC サイトのバックエンド API を設計してください」
-```
-
-### 対象クラウドの指定
-
-3クラウド全対応ですが、呼び出し時にサブセット指定が可能です。
+Request designs interactively in Claude Code. Skills trigger automatically.
 
 ```
-「AWS のみで foundation 設計をしてください」
-「Azure と GCP で共有プラットフォームを設計してください」
+# 1. Foundation (run first)
+"Design a foundation for 3 BUs targeting AWS and Azure"
+
+# 2. Shared Platform (run after foundation)
+"Design a shared platform based on EKS/AKS"
+
+# 3. Product (run after foundation + shared platform)
+"Design the backend API for an e-commerce site"
 ```
 
-### ベンダーソースの活用
+### Specifying Target Clouds
 
-ベンダーソースが未準備でもスキルは動作します。設計実行時にソースが見つからない場合、公式ガイダンスページから最新コンテンツを自動収集し markdown として保存します。
+All 3 clouds are supported, but you can specify a subset at invocation time.
+
+```
+"Design a foundation for AWS only"
+"Design a shared platform for Azure and GCP"
+```
+
+### Vendor Source Handling
+
+Skills work even without pre-prepared vendor sources. When sources are not found during design execution, the latest content is automatically collected from official guidance pages and saved as markdown.
 
 ```
 docs/cloud-context/sources/
-├── aws/          # AWS Well-Architected, CAF, EKS Best Practices 等
-├── azure/        # Azure CAF, Landing Zone, AKS Best Practices 等
-└── gcp/          # GCP Architecture Guidance, GKE Best Practices 等
+├── aws/          # AWS Well-Architected, CAF, EKS Best Practices, etc.
+├── azure/        # Azure CAF, Landing Zone, AKS Best Practices, etc.
+└── gcp/          # GCP Architecture Guidance, GKE Best Practices, etc.
 ```
 
-収集の優先順位:
-1. `docs/cloud-context/summaries/{layer}/` のサマリー（あれば最優先）
-2. `docs/cloud-context/sources/{vendor}/` の保存済みソース
-3. Web から最新を自動収集（上記が無い場合）
+Collection priority:
+1. Summaries in `docs/cloud-context/summaries/{layer}/` (highest priority if available)
+2. Saved sources in `docs/cloud-context/sources/{vendor}/`
+3. Auto-collected from web (when above are absent)
 
-事前にソースを準備したい場合は、公式ページの内容を markdown export して上記ディレクトリに配置してください。収集対象 URL の一覧は `.claude/skills/mcl-common/references/vendor-source-policy.md` を参照してください。
+To prepare sources in advance, export official page content as markdown and place in the directories above. See `.claude/skills/mcl-common/references/vendor-source-policy.md` for the list of collection target URLs.
 
-## 設計パイプライン
+## Design Pipeline
 
-全スキル共通の 4 層モデルに従います。
+All skills follow a common 4-layer model.
 
 ```
 Vendor Sources → Canonical Model → Vendor Mapping → Implementation Artifacts
 ```
 
-| 層 | 内容 | 優先度 |
+| Layer | Content | Priority |
 | --- | --- | --- |
-| Vendor Sources | クラウドベンダーの公式ガイダンス | 最高 |
-| Canonical Model | ベンダー中立の capability 表現 | 高 |
-| Vendor Mapping | ベンダー固有サービスへのマッピング（fidelity 評価付き） | 中 |
-| Implementation Artifacts | 実装仕様、IaC スケルトン、適合性レポート | 低 |
+| Vendor Sources | Official cloud vendor guidance | Highest |
+| Canonical Model | Vendor-neutral capability representation | High |
+| Vendor Mapping | Mapping to vendor-specific services (with fidelity scoring) | Medium |
+| Implementation Artifacts | Impl specs, IaC skeletons, conformance reports | Low |
 
-競合時は上位層を優先します。
+Higher layers take precedence on conflicts.
 
-## 出力ディレクトリ
+## Output Directory
 
-3レイヤーすべてを AWS + Azure で実行した場合、利用プロジェクトに以下のディレクトリ構成が生成されます。
+When all 3 layers are executed for AWS + Azure, the following directory structure is generated in the target project.
 
 ```
 your-project/
 ├── specs/
 │   ├── foundation/
-│   │   ├── input/                          # (任意) ユーザー入力
+│   │   ├── input/                          # (optional) user input
 │   │   └── output/
-│   │       ├── foundation-canonical.yaml       # ベンダー中立の基盤モデル
-│   │       ├── foundation-mapping-aws.yaml     # AWS マッピング
-│   │       ├── foundation-mapping-azure.yaml   # Azure マッピング
-│   │       ├── foundation-impl-aws.yaml        # AWS 実装仕様
-│   │       ├── foundation-impl-azure.yaml      # Azure 実装仕様
-│   │       └── foundation-context.yaml         # 下位スキルへの入力
+│   │       ├── foundation-canonical.yaml       # Vendor-neutral foundation model
+│   │       ├── foundation-mapping-aws.yaml     # AWS mapping
+│   │       ├── foundation-mapping-azure.yaml   # Azure mapping
+│   │       ├── foundation-impl-aws.yaml        # AWS impl spec
+│   │       ├── foundation-impl-azure.yaml      # Azure impl spec
+│   │       └── foundation-context.yaml         # Input for downstream skills
 │   ├── shared-platform/
 │   │   └── output/
 │   │       ├── shared-platform-canonical.yaml
@@ -194,33 +199,33 @@ your-project/
 │   │       ├── shared-platform-mapping-azure.yaml
 │   │       ├── shared-platform-impl-aws.yaml
 │   │       ├── shared-platform-impl-azure.yaml
-│   │       ├── service-catalog.yaml            # プラットフォームサービス一覧
-│   │       └── shared-platform-context.yaml    # 下位スキルへの入力
+│   │       ├── service-catalog.yaml            # Platform service catalog
+│   │       └── shared-platform-context.yaml    # Input for downstream skills
 │   └── product/
 │       └── output/
-│           ├── product-workload-model.yaml     # ワークロード定義
+│           ├── product-workload-model.yaml     # Workload definition
 │           ├── product-mapping-aws.yaml
 │           ├── product-mapping-azure.yaml
 │           ├── product-impl-aws.yaml
 │           ├── product-impl-azure.yaml
-│           ├── product-observability.yaml      # SLI/SLO、アラート定義
-│           └── product-cost-hints.yaml         # コスト最適化戦略
+│           ├── product-observability.yaml      # SLI/SLO, alert definitions
+│           └── product-cost-hints.yaml         # Cost optimization strategies
 ├── docs/
 │   └── cloud-context/
-│       ├── sources/                            # ベンダーソース（自動収集 or 手動配置）
+│       ├── sources/                            # Vendor sources (auto-collected or manual)
 │       │   ├── aws/
 │       │   ├── azure/
 │       │   └── gcp/
 │       ├── decisions/
-│       │   ├── foundation/                     # 基盤の設計判断記録
+│       │   ├── foundation/                     # Foundation design decision records
 │       │   ├── shared-platform/
 │       │   └── product/
 │       ├── conformance/
-│       │   ├── foundation/                     # 適合性検証レポート
+│       │   ├── foundation/                     # Conformance verification reports
 │       │   ├── shared-platform/
 │       │   └── product/
 │       └── generated-md/
-│           ├── foundation/                     # アーキテクチャドキュメント
+│           ├── foundation/                     # Architecture documents
 │           ├── shared-platform/
 │           └── product/
 └── infra/
@@ -235,127 +240,127 @@ your-project/
         └── azure/
 ```
 
-## YAML 正本ポリシー
+## YAML Source-of-Truth Policy
 
-- **YAML が全 artifact の正本**。Markdown は常に派生生成物
-- 全 YAML に共通メタデータを含む（`schema_version`, `artifact_type`, `skill_type`, `artifact_id`, `title`, `status`, `generated_at` 等）
-- IaC のプレースホルダー値には `# TODO:` コメント付き
+- **YAML is the source of truth for all artifacts**. Markdown is always a derived output
+- All YAML includes common metadata (`schema_version`, `artifact_type`, `skill_type`, `artifact_id`, `title`, `status`, `generated_at`, etc.)
+- IaC placeholder values include `# TODO:` comments
 
-## 出力サンプル
+## Sample Output
 
-`sample/` ディレクトリには、3 レイヤーすべてを実行した完全なサンプル出力が含まれています。スキルがどのような artifact を生成するかを理解するためのリファレンスとして利用できます。
+The `sample/` directory contains complete sample output from executing all 3 layers. Use it as a reference to understand what artifacts the skills generate.
 
-### シナリオ
+### Scenario
 
-| 項目 | 内容 |
+| Item | Details |
 | --- | --- |
-| 対象クラウド | AWS（フルスタック）+ Azure（Entra ID IdP 専用）+ GCP（BigQuery 専用） |
-| BU 数 | 8（CCoE, マーケティング, 営業, 開発, カスタマーサクセス, 経理, 総務, 経営） |
-| 環境 | 本番 / ステージング / 開発（3 面） |
-| コンプライアンス | SOC2 Type II |
-| 共有ランタイム | EKS + Lambda ハイブリッド |
-| CI/CD | GitHub Actions + ArgoCD（GitOps） |
-| 監視 | AMP + AMG（マネージド Prometheus / Grafana） |
-| データ分析 | BigQuery（dbt による ELT、Looker Studio で可視化） |
+| Target Clouds | AWS (full stack) + Azure (Entra ID IdP only) + GCP (BigQuery only) |
+| Business Units | 8 (CCoE, Marketing, Sales, Engineering, Customer Success, Finance, General Affairs, Executive) |
+| Environments | Production / Staging / Development (3 tiers) |
+| Compliance | SOC2 Type II |
+| Shared Runtime | EKS + Lambda hybrid |
+| CI/CD | GitHub Actions + ArgoCD (GitOps) |
+| Monitoring | AMP + AMG (Managed Prometheus / Grafana) |
+| Data Analytics | BigQuery (ELT via dbt, visualization with Looker Studio) |
 
-### アーキテクチャドキュメント
+### Architecture Documents
 
-各レイヤーの設計結果は Mermaid 図付きのアーキテクチャドキュメントとして生成されます。
+Design results for each layer are generated as architecture documents with Mermaid diagrams.
 
-| レイヤー | ドキュメント | 主な内容 |
+| Layer | Document | Key Contents |
 | --- | --- | --- |
-| Foundation | [基盤アーキテクチャ](sample/docs/cloud-context/generated-md/foundation/foundation-architecture.md) | 組織階層図、認証フロー、ネットワークトポロジ、セキュリティガードレール階層、クロスクラウド監査統合 |
-| Shared Platform | [共有プラットフォームアーキテクチャ](sample/docs/cloud-context/generated-md/shared-platform/shared-platform-architecture.md) | EKS+Lambda 構成図、CI/CD パイプラインフロー、オブザーバビリティスタック、テナントオンボーディング |
-| Product | [データ分析基盤アーキテクチャ](sample/docs/cloud-context/generated-md/product/product-architecture.md) | データパイプライン全体図、dbt モデル構成、クロスクラウドデプロイメント、SLI/SLO |
+| Foundation | [Foundation Architecture](sample/docs/cloud-context/generated-md/foundation/foundation-architecture.md) | Org hierarchy, auth flow, network topology, security guardrail hierarchy, cross-cloud audit integration |
+| Shared Platform | [Shared Platform Architecture](sample/docs/cloud-context/generated-md/shared-platform/shared-platform-architecture.md) | EKS+Lambda config, CI/CD pipeline flow, observability stack, tenant onboarding |
+| Product | [Data Analytics Platform Architecture](sample/docs/cloud-context/generated-md/product/product-architecture.md) | Data pipeline overview, dbt model structure, cross-cloud deployment, SLI/SLO |
 
-### 生成物一覧
+### Generated Artifacts
 
 ```
 sample/
 ├── specs/
 │   ├── foundation/
-│   │   ├── input/foundation-input.yaml           # ヒアリング結果
+│   │   ├── input/foundation-input.yaml           # Interview results
 │   │   └── output/
-│   │       ├── foundation-canonical.yaml          # ベンダー中立モデル（8 capability）
-│   │       ├── foundation-mapping-{aws,azure,gcp}.yaml  # 3 クラウドマッピング
-│   │       ├── foundation-impl-{aws,azure,gcp}.yaml     # 3 クラウド実装仕様
-│   │       └── foundation-context.yaml            # 下位レイヤーへの入力
+│   │       ├── foundation-canonical.yaml          # Vendor-neutral model (8 capabilities)
+│   │       ├── foundation-mapping-{aws,azure,gcp}.yaml  # 3-cloud mappings
+│   │       ├── foundation-impl-{aws,azure,gcp}.yaml     # 3-cloud impl specs
+│   │       └── foundation-context.yaml            # Input for downstream layers
 │   ├── shared-platform/
 │   │   ├── input/shared-platform-input.yaml
 │   │   └── output/
-│   │       ├── shared-platform-canonical.yaml     # 7 capability
-│   │       ├── service-catalog.yaml               # 必須 4 + 任意 3 サービス
+│   │       ├── shared-platform-canonical.yaml     # 7 capabilities
+│   │       ├── service-catalog.yaml               # 4 required + 3 optional services
 │   │       ├── shared-platform-mapping-aws.yaml
 │   │       ├── shared-platform-impl-aws.yaml
 │   │       └── shared-platform-context.yaml
 │   └── product/
 │       ├── input/product-input.yaml
 │       └── output/
-│           ├── product-workload-model.yaml        # 取り込み/変換/提供の 3 層
+│           ├── product-workload-model.yaml        # Ingest / Transform / Serve 3-tier
 │           ├── product-mapping-gcp.yaml
 │           ├── product-impl-gcp.yaml
-│           ├── product-observability.yaml         # SLI/SLO/アラート
-│           └── product-cost-hints.yaml            # 8 つのコスト最適化戦略
+│           ├── product-observability.yaml         # SLI/SLO/Alerts
+│           └── product-cost-hints.yaml            # 8 cost optimization strategies
 ├── docs/cloud-context/
-│   ├── sources/{aws,azure,gcp}/                   # ベンダーソース（24 ファイル）
+│   ├── sources/{aws,azure,gcp}/                   # Vendor sources (24 files)
 │   ├── decisions/
-│   │   ├── foundation/                            # Azure IdP 限定、GCP BQ 限定、コスト按分、NW トポロジ
-│   │   ├── shared-platform/                       # ハイブリッドランタイム、GitOps
-│   │   └── product/                               # dbt 採用、マルチパターン取り込み
-│   ├── conformance/{foundation,shared-platform,product}/  # 適合性レポート
-│   └── generated-md/{foundation,shared-platform,product}/ # Mermaid 図付きアーキテクチャ MD
+│   │   ├── foundation/                            # Azure IdP-only, GCP BQ-only, cost allocation, NW topology
+│   │   ├── shared-platform/                       # Hybrid runtime, GitOps
+│   │   └── product/                               # dbt adoption, multi-pattern ingestion
+│   ├── conformance/{foundation,shared-platform,product}/  # Conformance reports
+│   └── generated-md/{foundation,shared-platform,product}/ # Architecture MD with Mermaid diagrams
 └── infra/
     ├── foundation/
-    │   ├── aws/     # 7 モジュール（organizations, audit, security, network 等）
-    │   ├── azure/   # 1 モジュール（entra-id）
-    │   └── gcp/     # 6 モジュール（resource-hierarchy, identity, org-policy 等）
+    │   ├── aws/     # 7 modules (organizations, audit, security, network, etc.)
+    │   ├── azure/   # 1 module (entra-id)
+    │   └── gcp/     # 6 modules (resource-hierarchy, identity, org-policy, etc.)
     ├── shared-platform/
-    │   └── aws/     # 6 モジュール（eks, observability, argocd, ecr 等）
+    │   └── aws/     # 6 modules (eks, observability, argocd, ecr, etc.)
     └── product/
-        └── gcp/     # 4 モジュール（bigquery-datasets, data-ingestion, dbt, security）
+        └── gcp/     # 4 modules (bigquery-datasets, data-ingestion, dbt, security)
 ```
 
-### サンプルの再生成
+### Regenerating the Sample
 
-`sample/` の内容を自分の要件で再生成したい場合:
+To regenerate the `sample/` contents with your own requirements:
 
 ```bash
-# sample/ を空にしてからスキルを実行
+# Clear sample/ then run skills
 rm -rf sample/*
 
-# Claude Code で対話的に設計
-# 「./sample ディレクトリをルートにしたい」と伝えた上で:
+# Design interactively with Claude Code
+# Tell it "I want ./sample as the root directory", then:
 # 1. /mcl-foundation-design
-#    agentからの質問に、選択肢から回答
-# 2. /mcl-shared-platform-design k8s基盤
-#    agentからの質問に、選択肢から回答
-# 3. /mcl-product-design データ分析基盤
-#    agentからの質問に、選択肢から回答
+#    Answer the agent's questions by choosing from options
+# 2. /mcl-shared-platform-design k8s platform
+#    Answer the agent's questions by choosing from options
+# 3. /mcl-product-design data analytics platform
+#    Answer the agent's questions by choosing from options
 ```
 
-## リポジトリ構成
+## Repository Structure
 
 ```
 .claude/
 ├── skills/
-│   ├── mcl-common/              # 共通メタスキル
-│   │   ├── references/          # 正規化ルール、マッピングルール、競合分類
-│   │   ├── templates/           # YAML テンプレート（canonical, mapping, decision 等）
-│   │   └── schemas/             # 共通メタデータスキーマ
-│   ├── mcl-foundation-design/   # 基盤設計スキル
+│   ├── mcl-common/              # Shared meta-skill
+│   │   ├── references/          # Normalization rules, mapping rules, conflict classification
+│   │   ├── templates/           # YAML templates (canonical, mapping, decision, etc.)
+│   │   └── schemas/             # Common metadata schema
+│   ├── mcl-foundation-design/   # Foundation design skill
 │   │   ├── SKILL.md
 │   │   ├── evals/
 │   │   ├── references/ → ../mcl-common/references
 │   │   ├── schemas/   → ../mcl-common/schemas
 │   │   └── templates/ → ../mcl-common/templates
-│   ├── mcl-shared-platform-design/  # 共有プラットフォーム設計スキル
-│   │   └── (同構成)
-│   └── mcl-product-design/      # プロダクト設計スキル
-│       └── (同構成)
-├── CLAUDE.md                    # Claude Code 向け指示
+│   ├── mcl-shared-platform-design/  # Shared platform design skill
+│   │   └── (same structure)
+│   └── mcl-product-design/      # Product design skill
+│       └── (same structure)
+├── CLAUDE.md                    # Instructions for Claude Code
 └── ...
 ```
 
-## ライセンス
+## License
 
 MIT
